@@ -1,0 +1,11 @@
+This module munges the users.lua and lists.lua (Colloquy 1.3x) files
+in to executable perl code which is then evaluated. Colloquy 1.4 uses
+a seperate LUA file for each user and list, which are located in the
+users and lists directories in the Colloquy data directory. These files
+are read one by one and evaluated in the same way.
+
+This module should therefore be used with caution if you cannot gaurentee
+the integrity of the user and list LUA files! The module will issue a
+warning complaining about write group permissions if ^W warnings are
+enabled, and will die if any of the LUA files have world writable
+permissions.
