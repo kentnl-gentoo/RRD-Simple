@@ -12,7 +12,7 @@ use constant DEFAULT_DSTYPE => exists $ENV{DEFAULT_DSTYPE}
 						? $ENV{DEFAULT_DSTYPE} : 'GAUGE';
 
 use vars qw($VERSION);
-$VERSION = sprintf('%d.%02d', q$Revision: 1.6 $ =~ /(\d+)/g);
+$VERSION = sprintf('%d.%02d', q$Revision: 1.7 $ =~ /(\d+)/g);
 
 
 #
@@ -544,7 +544,7 @@ to one year retention only).
 
 =head1 VERSION
 
-$Revision: 1.6 $
+$Revision: 1.7 $
 
 =head1 AUTHOR
 
@@ -558,5 +558,6 @@ $Author: nicolaw $
 
 
 __END__
+
 
 
