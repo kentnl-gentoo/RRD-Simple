@@ -12,7 +12,7 @@ use constant DEFAULT_DSTYPE => exists $ENV{DEFAULT_DSTYPE}
 						? $ENV{DEFAULT_DSTYPE} : 'GAUGE';
 
 use vars qw($VERSION);
-$VERSION = sprintf('%d.%02d', q$Revision: 1.7 $ =~ /(\d+)/g);
+$VERSION = sprintf('%d.%02d', q$Revision: 1.8 $ =~ /(\d+)/g);
 
 
 #
@@ -542,9 +542,14 @@ Finish POD.
 Write the retention duration scheme handling code. (Currently defaults
 to one year retention only).
 
+=head1 SEE ALSO
+
+L<RRDTool::Managed>, L<RRDTool::OO>, L<RRD::Query>, L<RRDs>,
+L<http://www.rrdtool.org>
+
 =head1 VERSION
 
-$Revision: 1.7 $
+$Id: Simple.pm,v 1.8 2005/12/08 15:08:25 nicolaw Exp $
 
 =head1 AUTHOR
 
@@ -552,7 +557,13 @@ Nicola Worthington <nicolaw@cpan.org>
 
 http://perlgirl.org.uk
 
-$Author: nicolaw $
+=head1 COPYRIGHT
+
+(c) Nicola Worthington 2005. This program is free software; you can
+redistribute it and/or modify it under the GNU GPL.
+
+See the file COPYING in this distribution, or
+http://www.gnu.org/licenses/gpl.txt 
 
 =cut
 
