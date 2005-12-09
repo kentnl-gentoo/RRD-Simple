@@ -12,7 +12,7 @@ use constant DEFAULT_DSTYPE => exists $ENV{DEFAULT_DSTYPE}
 						? $ENV{DEFAULT_DSTYPE} : 'GAUGE';
 
 use vars qw($VERSION);
-$VERSION = sprintf('%d.%02d', q$Revision: 1.10 $ =~ /(\d+)/g);
+$VERSION = sprintf('%d.%02d', q$Revision: 1.11 $ =~ /(\d+)/g);
 
 
 #
@@ -449,14 +449,15 @@ sub _create_graph {
 	$param{'--title'} .= ' - [Monthly Graph: 2 hour average]' if $type =~ /month/i;
 	$param{'--title'} .= ' - [Annual Graph: 1 day average]' if $type =~ /annual|year/i;
 
-	my @def;
-	while (my ($k,$v) = each %param) {
-		push @def, "$k=$v";
-	}
-
 	my $image = File::Basename::basename($rrdfile).".$type.png";
 	if ($param{'--destination'}) {
 		$image = File::Spec->catfile($param{'--destination'},$image);
+	}
+	delete $param{'--destination'};
+
+	my @def;
+	while (my ($k,$v) = each %param) {
+		push @def, "$k=$v";
 	}
 
 	my @cmd = ($image,
@@ -615,8 +616,9 @@ RRD::Simple - Simple interface to create and store data in RRD files
          );
  
  my @rtn = $rrd->graph("myfile.rrd",
-             destination => '/var/tmp',
-             'vertical-label' => 'Bytes/Faults'
+             destination => "/var/tmp",
+             title => "Network Interface eth0",
+             "vertical-label" => "Bytes/Faults"
          );
 
  # Get unixtime of when RRD file was last updated
@@ -712,7 +714,7 @@ L<http://www.rrdtool.org>
 
 =head1 VERSION
 
-$Id: Simple.pm,v 1.10 2005/12/09 23:17:00 nicolaw Exp $
+$Id: Simple.pm,v 1.11 2005/12/09 23:52:43 nicolaw Exp $
 
 =head1 AUTHOR
 
