@@ -5,14 +5,15 @@ use strict;
 use RRDs;
 use Carp qw(croak cluck confess);
 use File::Spec;
-use File::Basename;
+use File::Basename qw(fileparse dirname basename);
 
-use constant DEBUG => $ENV{DEBUG} ? 1 : 0;
-use constant DEFAULT_DSTYPE => exists $ENV{DEFAULT_DSTYPE}
-						? $ENV{DEFAULT_DSTYPE} : 'GAUGE';
+use vars qw($VERSION $DEBUG $DEFAULT_DSTYPE);
+$VERSION = sprintf('%d.%02d', q$Revision: 1.13 $ =~ /(\d+)/g);
 
-use vars qw($VERSION);
-$VERSION = sprintf('%d.%02d', q$Revision: 1.11 $ =~ /(\d+)/g);
+$DEBUG = $ENV{DEBUG} ? 1 : 0;
+$DEFAULT_DSTYPE = exists $ENV{DEFAULT_DSTYPE}
+					? $ENV{DEFAULT_DSTYPE} : 'GAUGE';
+
 
 
 #
@@ -126,10 +127,10 @@ sub update {
 	# Try to automatically create it
 	unless (-f $rrdfile) {
 		cluck "RRD file '$rrdfile' does not exist; attempting to create it",
-				"using default DS type of ".DEFAULT_DSTYPE;
+				"using default DS type of $DEFAULT_DSTYPE";
 		my @args;
 		for (my $i = 0; $i < @_; $i++) {
-			push @args, ($_[$i],DEFAULT_DSTYPE) unless $i % 2;
+			push @args, ($_[$i],$DEFAULT_DSTYPE) unless $i % 2;
 		}
 		$self->create($rrdfile,@args);
 	}
@@ -429,43 +430,56 @@ sub _create_graph {
 
 	my %param;
 	while (my $k = shift) {
-		$k = '--'.lc($k);
-		$param{$k} = shift;
+		$param{lc($k)} = shift;
 	}
 
-	unless ($param{'--start'}) {
-		$param{'--start'} = time-(60*60*48);
-		$param{'--start'} = time-(60*60*24*8) if $type =~ /week/i;
-		$param{'--start'} = time-(60*60*24*62) if $type =~ /month/i;
-		$param{'--start'} = time-(60*60*24*370) if $type =~ /annual|year/i;
+	# Specify some default values
+	$param{'end'} ||= time();
+	$param{'imgformat'} ||= 'PNG';
+	$param{'alt-autoscale'} ||= '';
+	$param{'alt-y-grid'} ||= '';
+
+	# Define where to write the image
+	my $image = basename($rrdfile).".$type.".lc($param{'imgformat'});
+	if ($param{'destination'}) {
+		$image = File::Spec->catfile($param{'destination'},$image);
+	}
+	delete $param{'destination'};
+
+	# Define how thick the graph lines should be
+	my $line_thickness = defined $param{'line-thickness'} &&
+						$param{'line-thickness'} =~ /^[123]$/ ?
+						$param{'line-thickness'} : 1;
+	delete $param{'line-thickness'};
+
+	# Specify a default start time
+	unless ($param{'start'}) {
+		$param{'start'} = time-(60*60*48);
+		$param{'start'} = time-(60*60*24*8) if $type =~ /week/i;
+		$param{'start'} = time-(60*60*24*62) if $type =~ /month/i;
+		$param{'start'} = time-(60*60*24*370) if $type =~ /annual|year/i;
 	}
 
-	$param{'--end'} ||= time();
-	$param{'--imgformat'} ||= 'PNG';
+	# Suffix the title with the period information
+	$param{'title'} ||= basename($rrdfile);
+	$param{'title'} .= ' - [Daily Graph: 5 min average]' if $type =~ /daily|day/i;
+	$param{'title'} .= ' - [Weekly Graph: 30 min average]' if $type =~ /week/i;
+	$param{'title'} .= ' - [Monthly Graph: 2 hour average]' if $type =~ /month/i;
+	$param{'title'} .= ' - [Annual Graph: 1 day average]' if $type =~ /annual|year/i;
 
-	$param{'--title'} ||= File::Basename::basename($rrdfile);
-	$param{'--title'} .= ' - [Daily Graph: 5 min average]' if $type =~ /daily|day/i;
-	$param{'--title'} .= ' - [Weekly Graph: 30 min average]' if $type =~ /week/i;
-	$param{'--title'} .= ' - [Monthly Graph: 2 hour average]' if $type =~ /month/i;
-	$param{'--title'} .= ' - [Annual Graph: 1 day average]' if $type =~ /annual|year/i;
-
-	my $image = File::Basename::basename($rrdfile).".$type.png";
-	if ($param{'--destination'}) {
-		$image = File::Spec->catfile($param{'--destination'},$image);
-	}
-	delete $param{'--destination'};
-
+	# Convert our parameters in to an RRDs friendly defenition
 	my @def;
 	while (my ($k,$v) = each %param) {
-		push @def, "$k=$v";
+		if (length($k) == 1) { $k = '-'.uc($k); }
+		else { $k = "--$k"; }
+		if (!defined $v || !length($v)) {
+			push @def, $k;
+		} else {
+			push @def, "$k=$v";
+		}
 	}
 
-	my @cmd = ($image,
-				"--alt-autoscale",
-				"--alt-y-grid",
-				@def
-			);
-
+	# Populate a cycling tied scalar for line colours
 	tie my $colour, 'Colour', [ qw(
 			FFFF00 FF0000 FF00FF 00FFFF 0000FF 000000
 			555500 550000 550055 005555 000055 
@@ -473,16 +487,22 @@ sub _create_graph {
 			AAAAAA 555555
 		) ];
 
+	# Add the data sources to the graph
+	my @cmd = ($image,@def);
 	for my $ds ($self->sources($rrdfile)) {
 		push @cmd, sprintf('DEF:%s=%s:%s:AVERAGE',$ds,$rrdfile,$ds);
 		push @cmd, sprintf('%s:%s#%s:%-22s',
-				'LINE1', $ds, $colour, $ds
+				"LINE$line_thickness", $ds, $colour, $ds
 			);
 	}
 
+	# Add a comment stating when the graph was last updated
 	push @cmd, ('COMMENT:\s','COMMENT:\s','COMMENT:\s');
 	push @cmd, 'COMMENT:Last updated: '.localtime().'\r';
 
+	DUMP('@cmd',\@cmd);
+
+	# Generate the graph
 	my @rtn = RRDs::graph(@cmd);
 	my $error = RRDs::error;
 	croak($error) if $error;
@@ -516,7 +536,7 @@ sub _find_binary {
 	return $binary if -f $binary && -x $binary;
 
 	my @paths = File::Spec->path();
-	my $rrds_path = File::Basename::dirname($INC{'RRDs.pm'});
+	my $rrds_path = dirname($INC{'RRDs.pm'});
 	push @paths, $rrds_path;
 	push @paths, File::Spec->catdir($rrds_path,
 				File::Spec->updir(),File::Spec->updir(),'bin');
@@ -529,18 +549,17 @@ sub _find_binary {
 
 sub _guess_filename {
 	croak('Pardon?!') if ref shift;
-	my ($basename, $dirname, $extension) = 
-		File::Basename::fileparse($0, '\.[^\.]+');
+	my ($basename, $dirname, $extension) = fileparse($0, '\.[^\.]+');
 	return "$dirname$basename.rrd";
 }
 
 sub TRACE {
-	return unless DEBUG;
+	return unless $DEBUG;
 	warn(shift());
 }
 
 sub DUMP {
-	return unless DEBUG;
+	return unless $DEBUG;
 	eval {
 		require Data::Dumper;
 		warn(shift().': '.Data::Dumper::Dumper(shift()));
@@ -598,10 +617,8 @@ RRD::Simple - Simple interface to create and store data in RRD files
  my $rrd = RRD::Simple->new();
  
  # Create a new RRD file with 3 data sources called
- # bytesIn, bytesOut and faultsPerSec. Data retention
- # of a year is specified. (The data retention parameter
- # is optional and not required).
- $rrd->create("myfile.rrd", "year",
+ # bytesIn, bytesOut and faultsPerSec.
+ $rrd->create("myfile.rrd",
              bytesIn => "GAUGE",
              bytesOut => "GAUGE",
              faultsPerSec => "COUNTER"
@@ -615,10 +632,12 @@ RRD::Simple - Simple interface to create and store data in RRD files
              faultsPerSec => 0.4
          );
  
+ # Generate graphs
  my @rtn = $rrd->graph("myfile.rrd",
              destination => "/var/tmp",
              title => "Network Interface eth0",
-             "vertical-label" => "Bytes/Faults"
+             "vertical-label" => "Bytes/Faults",
+             "interlaced" => ""
          );
 
  # Get unixtime of when RRD file was last updated
@@ -640,7 +659,7 @@ RRD::Simple provides a simple interface to RRDTool's RRDs module.
 This module does not currently offer C<fetch> or C<info> methods
 that are available in the RRDs module.
 
-It does howeve create RRD files with a sensible set of default RRA
+It does however create RRD files with a sensible set of default RRA
 (Round Robin Archive) definitions, and can dynamically add new
 data source names to an existing RRD file.
 
@@ -651,6 +670,19 @@ RRA definitions.
 =head1 METHODS
 
 =head2 new
+
+ my $rrd = RRD::Simple->new(
+         rrdtool => '/usr/local/rrdtool-1.2.11/bin/rrdtool'
+     );
+
+The C<rrdtool> paramater is optional. It specifically defines where the
+C<rrdtool> binary can be found. If not specified, the module will search for
+the C<rrdtool> binary in your path, and an additional location relative 
+where the C<RRDs> module was loaded from.
+
+The C<rrdtool> binary is only used by the C<add_source> method, which could
+also be automatically called by the C<update> method if data point values for
+a previous undefined data source are provided for insertion.
 
 =head2 create
 
@@ -675,19 +707,35 @@ will change how long data will be retained for within the RRD file.
          source_name => 'VALUE'
      );
 
+C<$rrdfile> is optional and will default to C<$0.rrd>. (Script basename with
+the file extension of .rrd).
+
+C<$unixtime> is optional and will default to C<time()> (the current unixtime).
+Specifying this value will determine the date and time that your data point
+values will be stored against in the RRD file.
+
 =head2 last
 
  my $unixtime = $rrd->last($rrdfile);
 
+C<$rrdfile> is optional and will default to C<$0.rrd>. (Script basename with
+the file extension of .rrd).
+
 =head2 sources
 
  my @sources = $rrd->sources($rrdfile);
+
+C<$rrdfile> is optional and will default to C<$0.rrd>. (Script basename with
+the file extension of .rrd).
 
 =head2 add_source
 
  $rrd->add_source($rrdfile,
          source_name => 'TYPE'
      );
+
+C<$rrdfile> is optional and will default to C<$0.rrd>. (Script basename with
+the file extension of .rrd).
 
 =head2 graph
 
@@ -697,6 +745,65 @@ will change how long data will be retained for within the RRD file.
          rrd_graph_option => 'value',
          rrd_graph_option => 'value'
      );
+
+C<$rrdfile> is optional and will default to C<$0.rrd>. (Script basename with
+the file extension of .rrd).
+
+The C<destination> paramater is optional, and it will default to the same
+path location as that of the RRD file specified by C<$rrdfile>. Specifying
+this value will force the resulting graph images to be written to this path
+location. (The specified path must be a valid directory with the sufficient
+permissions to write the graph images).
+
+Common RRD graph options are:
+
+=over 4
+
+=item "title"
+
+A horizontal string at the top of the graph.
+
+=item "vertical-label"
+
+A vertically placed string at the left hand side of the graph.
+
+=item "width"
+
+The width of the canvas (the part of the graph with the actual data
+and such). This defaults to 400 pixels.
+
+=item "height"
+
+The height of the canvas (the part of the graph with the actual data
+and such). This defaults to 100 pixels.
+
+=back
+
+For examples on how to best use the C<graph> method, refer to the example
+scripts that are bundled with this module in the examples/ directory. A
+complete list of paramaters can be found at
+L<http://people.ee.ethz.ch/~oetiker/webtools/rrdtool/doc/index.en.html>.
+
+=head1 VARIABLES
+
+=head2 $RRD::Simple::DEBUG
+
+Debug and trace information will be printed to STDERR if this variable
+if set to boolean true.
+
+This variable will take it's value from C<$ENV{DEBUG}>, if it exists,
+otherwise it will default to C<0> (boolean off). This is a normal package
+variable and may be safely modified at any time.
+
+=head2 $RRD::Simple::DEFAULT_DSTYPE
+
+This variable is used as the default data source type when creating or
+adding new data sources, when no other data source type is explicitly
+specified.
+
+This variable will take it's value from C<$ENV{DEFAULT_DSTYPE}>, if it
+exists, otherwise it will default to C<GAUGE>. This is a normal package
+variable and may be safely modified at any time.
 
 =head1 TODO
 
@@ -710,17 +817,17 @@ Write info() and fetch() methods.
 =head1 SEE ALSO
 
 L<RRDTool::Managed>, L<RRDTool::OO>, L<RRD::Query>, L<RRDs>,
-L<http://www.rrdtool.org>
+L<http://www.rrdtool.org>, examples/*.pl
 
 =head1 VERSION
 
-$Id: Simple.pm,v 1.11 2005/12/09 23:52:43 nicolaw Exp $
+$Id: Simple.pm,v 1.13 2005/12/10 15:56:22 nicolaw Exp $
 
 =head1 AUTHOR
 
 Nicola Worthington <nicolaw@cpan.org>
 
-http://perlgirl.org.uk
+L<http://perlgirl.org.uk>
 
 =head1 COPYRIGHT
 
@@ -728,7 +835,7 @@ http://perlgirl.org.uk
 redistribute it and/or modify it under the GNU GPL.
 
 See the file COPYING in this distribution, or
-http://www.gnu.org/licenses/gpl.txt 
+L<http://www.gnu.org/licenses/gpl.txt>
 
 =cut
 

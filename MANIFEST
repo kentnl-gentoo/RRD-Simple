@@ -6,6 +6,8 @@ INSTALL
 README
 TODO
 META.yml
+examples/graph.pl
+examples/foo.pl
 t/01synopsis_example_test.t
 t/02lazy_example_test.t
 t/03add_source.t
