@@ -2,13 +2,21 @@ package RRD::Simple;
 # vim:ts=4:sw=4:tw=78
 
 use strict;
+use Exporter;
 use RRDs;
 use Carp qw(croak cluck confess);
 use File::Spec;
 use File::Basename qw(fileparse dirname basename);
 
-use vars qw($VERSION $DEBUG $DEFAULT_DSTYPE);
-$VERSION = sprintf('%d.%02d', q$Revision: 1.13 $ =~ /(\d+)/g);
+use vars qw($VERSION $DEBUG $DEFAULT_DSTYPE
+			 @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
+
+$VERSION = sprintf('%d.%02d', q$Revision: 1.19 $ =~ /(\d+)/g);
+
+@ISA = qw(Exporter);
+@EXPORT = qw();
+@EXPORT_OK = qw(create update last_update graph info add_source sources);
+%EXPORT_TAGS = (all => \@EXPORT_OK);
 
 $DEBUG = $ENV{DEBUG} ? 1 : 0;
 $DEFAULT_DSTYPE = exists $ENV{DEFAULT_DSTYPE}
@@ -27,7 +35,7 @@ sub new {
 	my $self = { @_ };
 
 	my $validkeys = join('|',qw(rrdtool));
-	cluck('Unrecognised paramaters passed: '.
+	cluck('Unrecognised parameters passed: '.
 		join(', ',grep(!/^$validkeys$/,keys %{$self})))
 		if grep(!/^$validkeys$/,keys %{$self});
 
@@ -49,16 +57,16 @@ sub create {
 	}
 
 	# Grab or guess the filename
-	my $rrdfile = (@_ % 2 && $_[0] !~ /^day|week|month|year|3years$/i)
-				|| (!(@_ % 2) && $_[1] =~ /^day|week|month|year|3years$/i)
+	my $rrdfile = (@_ % 2 && !_valid_scheme($_[0]))
+				|| (!(@_ % 2) && _valid_scheme($_[1]))
 					? shift : _guess_filename();
 	croak "RRD file '$rrdfile' already exists" if -f $rrdfile;
 	TRACE("Using filename: $rrdfile");
 
 	# We've been given a scheme specifier
 	my $scheme = 'year';
-	if (@_ % 2 && $_[0] =~ /^(day|week|month|year|3years)$/i) {
-		$scheme =~ lc($1);
+	if (@_ % 2 && _valid_scheme($_[0])) {
+		$scheme = _valid_scheme($_[0]);
 		shift @_;
 	}
 	TRACE("Using scheme: $scheme");
@@ -67,7 +75,7 @@ sub create {
 	my %ds = @_;
 	DUMP('%ds',\%ds);
 
-	my @def = ('-b', time()-(3600*24*1200));
+	my @def = ('-b', time - _seconds_in('3year'));
 	push @def, '-s', 300;
 
 	# Add data sources
@@ -161,10 +169,13 @@ sub update {
 	for my $ds (sort keys %ds) {
 		# Check the data source names
 		if (!grep(/^$ds$/,@sources)) {
-			# If someone got the case wrong, go boom so they can fix it
+			# If someone got the case wrong, remind and correct them
 			if (grep(/^$ds$/i,@sources)) {
-				croak("Data source '$ds' does not exist. Did you mean '",
-					grep(/^$ds$/i,@sources),"' instead?");
+				cluck("Data source '$ds' does not exist. Automatically ",
+					"correcting it to '",(grep(/^$ds$/i,@sources))[0],
+					"' instead");
+				$ds{(grep(/^$ds$/i,@sources))[0]} = $ds{$ds};
+				delete $ds{$ds};
 
 			# Otherwise add any missing or new data sources on the fly
 			} else {
@@ -202,6 +213,7 @@ sub update {
 
 
 # Get the last time an RRD was updates
+sub last_update { __PACKAGE__->last(@_); }
 sub last {
 	my $self = shift;
 	unless(ref $self eq __PACKAGE__ || UNIVERSAL::isa($self, __PACKAGE__)) {
@@ -245,6 +257,7 @@ sub sources {
 	return @ds;
 }
 
+
 # Add a new data source to an RRD file
 sub add_source {
 	my $self = shift;
@@ -266,9 +279,6 @@ sub add_source {
 	TRACE("\$ds = $ds");
 	TRACE("\$dstype = $dstype");
 
-	require File::Copy;
-	require File::Temp;
-
 	my $rrdfileBackup = "$rrdfile.bak";
 	confess "$rrdfileBackup already exists; please investigate"
 		if -e $rrdfileBackup;
@@ -287,35 +297,213 @@ sub add_source {
 					keys %dsHeartbeats)[0];
 	TRACE("\$heartbeat = $heartbeat");
 
+	my $new_rrdfile = '';
+	eval {
+		$new_rrdfile = _add_source(
+				$rrdfile,$ds,$dstype,$heartbeat,$self->{rrdtool}
+			);
+	};
+
+	my $TgtSources = join(',',sort(($self->sources($rrdfile),$ds)));
+	if (!$@ && -f $new_rrdfile && $TgtSources eq 
+			join(',',sort($self->sources($new_rrdfile)))) {
+		File::Copy::move($rrdfile,$rrdfileBackup) &&
+			File::Copy::move($new_rrdfile,$rrdfile) &&
+				unlink($rrdfileBackup) ||
+					croak "Failed to move new RRD file in to place: $!";
+	} else {
+		croak "Failed to add new data source '$ds' to RRD file $rrdfile: $@";
+	}
+}
+
+
+# Make a number of graphs for an RRD file
+sub graph {
+	my $self = shift;
+	unless(ref $self eq __PACKAGE__ || UNIVERSAL::isa($self, __PACKAGE__)) {
+		unshift @_, $self;
+		$self = new __PACKAGE__;
+	}
+
+	# Grab or guess the filename
+	my $rrdfile = @_ % 2 ? shift : _guess_filename();
+
+	my @rtn;
+	for my $type (qw(day week month year)) {
+		push @rtn, [ ($self->_create_graph($rrdfile, $type, @_)) ];
+	}
+	#push @rtn, [ ($self->_create_graph($rrdfile, '3year', @_)) ];
+	return @rtn;
+}
+
+
+# Fetch data point information from an RRD file
+sub fetch {
+	my $self = shift;
+	unless(ref $self eq __PACKAGE__ || UNIVERSAL::isa($self, __PACKAGE__)) {
+		unshift @_, $self;
+		$self = new __PACKAGE__;
+	}
+
+	# Grab or guess the filename
+	my $rrdfile = @_ % 2 ? shift : _guess_filename();
+
+}
+
+
+# Fetch the last values inserted in to an RRD file
+sub last_values {
+	my $self = shift;
+	unless(ref $self eq __PACKAGE__ || UNIVERSAL::isa($self, __PACKAGE__)) {
+		unshift @_, $self;
+		$self = new __PACKAGE__;
+	}
+
+	# Grab or guess the filename
+	my $rrdfile = @_ % 2 ? shift : _guess_filename();
+
+}
+
+
+# Fetch information about an RRD file
+sub info {
+	my $self = shift;
+	unless(ref $self eq __PACKAGE__ || UNIVERSAL::isa($self, __PACKAGE__)) {
+		unshift @_, $self;
+		$self = new __PACKAGE__;
+	}
+
+	# Grab or guess the filename
+	my $rrdfile = @_ % 2 ? shift : _guess_filename();
+
+	my $info = RRDs::info($rrdfile);
+	my $error = RRDs::error;
+	croak($error) if $error;
+	DUMP('$info',$info);
+
+	my $rtn;
+	for my $key (sort(keys(%{$info}))) {
+		if ($key =~ /^rra\[(\d+)\]\.([a-z_]+)/) {
+			$rtn->{rra}->[$1]->{$2} = $info->{$key};
+		} elsif (my (@dsKey) = $key =~ /^ds\[([[A-Za-z0-9\_]+)?\]\.([a-z_]+)/) {
+			$rtn->{ds}->{$1}->{$2} = $info->{$key};
+		} elsif ($key !~ /\[[\d_a-z]+\]/i) {
+			$rtn->{$key} = $info->{$key};
+		}
+	}
+
+	# Return the information
+	DUMP('$rtn',$rtn);
+	return $rtn;
+}
+
+
+# Make a single graph image
+sub _create_graph {
+	my $self = shift;
+	my $rrdfile = shift;
+	my $type = _valid_scheme(shift) || 'day';
+
+	my %param;
+	while (my $k = shift) {
+		$param{lc($k)} = shift;
+	}
+
+	# Specify some default values
+	$param{'end'} ||= time();
+	$param{'imgformat'} ||= 'PNG';
+	$param{'alt-autoscale'} ||= '';
+	$param{'alt-y-grid'} ||= '';
+
+	# Define where to write the image
+	my $image = sprintf('%s.%s.%s',basename($rrdfile),
+				_alt_graph_name($type), lc($param{'imgformat'}));
+	if ($param{'destination'}) {
+		$image = File::Spec->catfile($param{'destination'},$image);
+	}
+	delete $param{'destination'};
+
+	# Define how thick the graph lines should be
+	my $line_thickness = defined $param{'line-thickness'} &&
+						$param{'line-thickness'} =~ /^[123]$/ ?
+						$param{'line-thickness'} : 1;
+	delete $param{'line-thickness'};
+
+	# Specify a default start time
+	$param{'start'} ||= time - _seconds_in($type);
+
+	# Suffix the title with the period information
+	$param{'title'} ||= basename($rrdfile);
+	$param{'title'} .= ' - [Daily Graph: 5 min average]'    if $type eq 'day';
+	$param{'title'} .= ' - [Weekly Graph: 30 min average]'  if $type eq 'week';
+	$param{'title'} .= ' - [Monthly Graph: 2 hour average]' if $type eq 'month';
+	$param{'title'} .= ' - [Annual Graph: 1 day average]'   if $type eq 'year';
+	$param{'title'} .= ' - [3 Year Graph: 3 day average]'   if $type eq '3year';
+
+	# Convert our parameters in to an RRDs friendly defenition
+	my @def;
+	while (my ($k,$v) = each %param) {
+		if (length($k) == 1) { $k = '-'.uc($k); }
+		else { $k = "--$k"; }
+		if (!defined $v || !length($v)) {
+			push @def, $k;
+		} else {
+			push @def, "$k=$v";
+		}
+	}
+
+	# Populate a cycling tied scalar for line colours
+	tie my $colour, 'RRD::Simple::_Colour', [ qw(
+			FF0000 00FF00 0000FF FFFF00 00FFFF FF00FF 000000
+			550000 005500 000055 555500 005555 550055 555555
+			AA0000 00AA00 0000AA AAAA00 00AAAA AA00AA AAAAAA
+		) ];
+
+	# Add the data sources to the graph
+	my @cmd = ($image,@def);
+	for my $ds ($self->sources($rrdfile)) {
+		push @cmd, sprintf('DEF:%s=%s:%s:AVERAGE',$ds,$rrdfile,$ds);
+		push @cmd, sprintf('%s:%s#%s:%-22s',
+				"LINE$line_thickness", $ds, $colour, $ds
+			);
+	}
+
+	# Add a comment stating when the graph was last updated
+	push @cmd, ('COMMENT:\s','COMMENT:\s','COMMENT:\s');
+	push @cmd, 'COMMENT:Last updated: '.localtime().'\r';
+
+	DUMP('@cmd',\@cmd);
+
+	# Generate the graph
+	my @rtn = RRDs::graph(@cmd);
+	my $error = RRDs::error;
+	croak($error) if $error;
+	return @rtn;
+}
+
+
+
+
+#
+# Private subroutines
+#
+
+sub _add_source {
+	croak('Pardon?!') if ref $_[0];
+	my ($rrdfile,$ds,$dstype,$heartbeat,$rrdtool) = @_;
+
+	require File::Copy;
+	require File::Temp;
+
 	# Generate an XML dump of the RRD file
 	my $tempXmlFile = File::Temp::tmpnam();
-	_safe_exec(sprintf('%s dump %s > %s',$self->{rrdtool},$rrdfile,$tempXmlFile));
-
-	# Move the original RRD file out of the way
-	if (-f $tempXmlFile) {
-		File::Copy::move($rrdfile, $rrdfileBackup);
-		unless (-f $rrdfileBackup) {
-			unlink $tempXmlFile;
-			croak "Failed to move $rrdfile to $rrdfileBackup";
-		}
-	} else {
-		croak "Failed to dump $rrdfile out to $tempXmlFile";
-	}
-
-	# Open XML input file
-	unless (open(IN, "<$tempXmlFile")) { 
-		File::Copy::move($rrdfileBackup, $rrdfile);
-		unlink $tempXmlFile;
-		croak "Unable to open '$tempXmlFile'";
-	}
+	_safe_exec(sprintf('%s dump %s > %s',$rrdtool,$rrdfile,$tempXmlFile));
+	open(IN, "<$tempXmlFile") || croak "Unable to open '$tempXmlFile': $!";
 
 	# Open XML output file
 	my $tempImportXmlFile = File::Temp::tmpnam();
-	unless (open(OUT, ">$tempImportXmlFile")) {
-		File::Copy::move($rrdfileBackup, $rrdfile);
-		unlink $tempXmlFile;
-		croak "Unable to open '$tempImportXmlFile'";
-	}
+	open(OUT, ">$tempImportXmlFile")
+		|| croak "Unable to open '$tempImportXmlFile': $!";
 
 	# Create a marker hash ref to store temporary state
 	my $marker = {
@@ -386,135 +574,67 @@ EndDS
 	}
 
 	# Close the files
-	close(IN);
-	close(OUT);
+	close(IN) || croak "Unable to close '$tempXmlFile': $!";
+	close(OUT) || croak "Unable to close '$tempImportXmlFile': $!";
 
 	# Import the new output file in to the old RRD filename
-	_safe_exec(sprintf('%s restore %s %s',$self->{rrdtool},$tempImportXmlFile,$rrdfile));
-	unless (-f $rrdfile) {
-		File::Copy::move($rrdfileBackup, $rrdfile);
-		unlink $tempXmlFile;
-		unlink $tempImportXmlFile;
-		unlink $rrdfileBackup;
-		croak "Failed to import $tempImportXmlFile in to $rrdfile";
-	}
+	my $new_rrdfile = File::Temp::tmpnam();
+	_safe_exec(sprintf('%s restore %s %s',
+				$rrdtool,$tempImportXmlFile,$new_rrdfile));
 
 	# Remove the temporary files
 	unlink $tempXmlFile;
 	unlink $tempImportXmlFile;
-	unlink $rrdfileBackup;
-}
 
-sub graph {
-	my $self = shift;
-	unless(ref $self eq __PACKAGE__ || UNIVERSAL::isa($self, __PACKAGE__)) {
-		unshift @_, $self;
-		$self = new __PACKAGE__;
-	}
-
-	# Grab or guess the filename
-	my $rrdfile = @_ % 2 ? shift : _guess_filename();
-
-	my @rtn;
-	push @rtn, [ ($self->_create_graph($rrdfile, 'daily', @_)) ];
-	push @rtn, [ ($self->_create_graph($rrdfile, 'weekly', @_)) ];
-	push @rtn, [ ($self->_create_graph($rrdfile, 'monthly', @_)) ];
-	push @rtn, [ ($self->_create_graph($rrdfile, 'annual', @_)) ];
-	return @rtn;
-}
-
-sub _create_graph {
-	my $self = shift;
-	croak "Pardon?!" unless ((caller(0))[3]) eq 'RRD::Simple::_create_graph';
-	my ($rrdfile,$type) = (shift,shift);
-
-	my %param;
-	while (my $k = shift) {
-		$param{lc($k)} = shift;
-	}
-
-	# Specify some default values
-	$param{'end'} ||= time();
-	$param{'imgformat'} ||= 'PNG';
-	$param{'alt-autoscale'} ||= '';
-	$param{'alt-y-grid'} ||= '';
-
-	# Define where to write the image
-	my $image = basename($rrdfile).".$type.".lc($param{'imgformat'});
-	if ($param{'destination'}) {
-		$image = File::Spec->catfile($param{'destination'},$image);
-	}
-	delete $param{'destination'};
-
-	# Define how thick the graph lines should be
-	my $line_thickness = defined $param{'line-thickness'} &&
-						$param{'line-thickness'} =~ /^[123]$/ ?
-						$param{'line-thickness'} : 1;
-	delete $param{'line-thickness'};
-
-	# Specify a default start time
-	unless ($param{'start'}) {
-		$param{'start'} = time-(60*60*48);
-		$param{'start'} = time-(60*60*24*8) if $type =~ /week/i;
-		$param{'start'} = time-(60*60*24*62) if $type =~ /month/i;
-		$param{'start'} = time-(60*60*24*370) if $type =~ /annual|year/i;
-	}
-
-	# Suffix the title with the period information
-	$param{'title'} ||= basename($rrdfile);
-	$param{'title'} .= ' - [Daily Graph: 5 min average]' if $type =~ /daily|day/i;
-	$param{'title'} .= ' - [Weekly Graph: 30 min average]' if $type =~ /week/i;
-	$param{'title'} .= ' - [Monthly Graph: 2 hour average]' if $type =~ /month/i;
-	$param{'title'} .= ' - [Annual Graph: 1 day average]' if $type =~ /annual|year/i;
-
-	# Convert our parameters in to an RRDs friendly defenition
-	my @def;
-	while (my ($k,$v) = each %param) {
-		if (length($k) == 1) { $k = '-'.uc($k); }
-		else { $k = "--$k"; }
-		if (!defined $v || !length($v)) {
-			push @def, $k;
-		} else {
-			push @def, "$k=$v";
-		}
-	}
-
-	# Populate a cycling tied scalar for line colours
-	tie my $colour, 'Colour', [ qw(
-			FFFF00 FF0000 FF00FF 00FFFF 0000FF 000000
-			555500 550000 550055 005555 000055 
-			AAAA00 AA0000 AA00AA 00AAAA 0000AA
-			AAAAAA 555555
-		) ];
-
-	# Add the data sources to the graph
-	my @cmd = ($image,@def);
-	for my $ds ($self->sources($rrdfile)) {
-		push @cmd, sprintf('DEF:%s=%s:%s:AVERAGE',$ds,$rrdfile,$ds);
-		push @cmd, sprintf('%s:%s#%s:%-22s',
-				"LINE$line_thickness", $ds, $colour, $ds
-			);
-	}
-
-	# Add a comment stating when the graph was last updated
-	push @cmd, ('COMMENT:\s','COMMENT:\s','COMMENT:\s');
-	push @cmd, 'COMMENT:Last updated: '.localtime().'\r';
-
-	DUMP('@cmd',\@cmd);
-
-	# Generate the graph
-	my @rtn = RRDs::graph(@cmd);
-	my $error = RRDs::error;
-	croak($error) if $error;
-	return @rtn;
+	# Return the new RRD filename
+	return $new_rrdfile;
 }
 
 
+sub _alt_graph_name {
+	croak('Pardon?!') if ref $_[0];
+	my $type = _valid_scheme(shift);
+	return 'daily'   if $type eq 'day';
+	return 'weekly'  if $type eq 'week';
+	return 'monthly' if $type eq 'month';
+	return 'annual'  if $type eq 'year';
+	return '3years'  if $type eq '3years';
+	return $type;
+}
 
 
-#
-# Private subroutines
-#
+sub _valid_scheme {
+	croak('Pardon?!') if ref $_[0];
+	if ($_[0] =~ /^(day|week|month|year|3years)$/i) {
+		return lc($1);
+	}
+	return undef;
+}
+
+
+sub _seconds_in {
+	croak('Pardon?!') if ref $_[0];
+	my $str = lc(shift);
+
+	my %time = (
+			day   => 86400,    # 60 * 60 * 24
+			week  => 604800,   # 60 * 60 * 24 * 7
+			month => 2678400,  # 60 * 60 * 24 * 31
+			year  => 31536000, # 60 * 60 * 24 * 365
+		);
+
+	if ($str eq 'day') {
+		return $time{day} * 2;
+	} elsif ($str eq 'week') {
+		return $time{week} + $time{day};
+	} elsif ($str eq 'month') {
+		return $time{month} + $time{week};
+	} elsif ($str eq '3year') {
+		return ($time{year} * 3) + $time{month};
+	}
+	return $time{year} + $time{month};
+}
+
 
 sub _safe_exec {
 	croak('Pardon?!') if ref $_[0];
@@ -529,6 +649,7 @@ sub _safe_exec {
 		croak "Unexpected potentially unsafe command will not be executed: $cmd";
 	}
 }
+
 
 sub _find_binary {
 	croak('Pardon?!') if ref $_[0];
@@ -547,16 +668,19 @@ sub _find_binary {
 	}
 }
 
+
 sub _guess_filename {
-	croak('Pardon?!') if ref shift;
+	croak('Pardon?!') if ref $_[0];
 	my ($basename, $dirname, $extension) = fileparse($0, '\.[^\.]+');
 	return "$dirname$basename.rrd";
 }
+
 
 sub TRACE {
 	return unless $DEBUG;
 	warn(shift());
 }
+
 
 sub DUMP {
 	return unless $DEBUG;
@@ -566,6 +690,7 @@ sub DUMP {
 	}
 }
 
+
 1;
 
 
@@ -573,7 +698,7 @@ sub DUMP {
 # This tie code is from Tie::Cycle
 # written by brian d foy, <bdfoy@cpan.org>
 
-package Colour;
+package RRD::Simple::_Colour;
 
 sub TIESCALAR {
 	my ($class,$list_ref) = @_;
@@ -640,6 +765,11 @@ RRD::Simple - Simple interface to create and store data in RRD files
              "interlaced" => ""
          );
 
+ # Return information about an RRD file
+ my $info = $rrd->info("myfile.rrd");
+ require Data::Dumper;
+ print Data::Dumper::Dumper($info);
+
  # Get unixtime of when RRD file was last updated
  my $lastUpdated = $rrd->last("myfile.rrd");
  print "myfile.rrd was last updated at " .
@@ -656,8 +786,8 @@ RRD::Simple - Simple interface to create and store data in RRD files
 =head1 DESCRIPTION
 
 RRD::Simple provides a simple interface to RRDTool's RRDs module.
-This module does not currently offer C<fetch> or C<info> methods
-that are available in the RRDs module.
+This module does not currently offer C<fetch> method that is
+available in the RRDs module.
 
 It does however create RRD files with a sensible set of default RRA
 (Round Robin Archive) definitions, and can dynamically add new
@@ -672,10 +802,10 @@ RRA definitions.
 =head2 new
 
  my $rrd = RRD::Simple->new(
-         rrdtool => '/usr/local/rrdtool-1.2.11/bin/rrdtool'
+         rrdtool => "/usr/local/rrdtool-1.2.11/bin/rrdtool"
      );
 
-The C<rrdtool> paramater is optional. It specifically defines where the
+The C<rrdtool> parameter is optional. It specifically defines where the
 C<rrdtool> binary can be found. If not specified, the module will search for
 the C<rrdtool> binary in your path, and an additional location relative 
 where the C<RRDs> module was loaded from.
@@ -687,9 +817,9 @@ a previous undefined data source are provided for insertion.
 =head2 create
 
  $rrd->create($rrdfile, $period,
-         source_name => 'TYPE',
-         source_name => 'TYPE',
-         source_name => 'TYPE'
+         source_name => "TYPE",
+         source_name => "TYPE",
+         source_name => "TYPE"
      );
 
 C<$rrdfile> is optional and will default to C<$0.rrd>. (Script basename with
@@ -699,12 +829,15 @@ C<$period> is optional and will default to C<year>. Valid options are C<day>,
 C<week>, C<month>, C<year> and C<3years>. Specifying a retention period value
 will change how long data will be retained for within the RRD file.
 
+RRD::Simple will croak and die if you try to create an RRD file that already
+exists.
+
 =head2 update
 
  $rrd->update($rrdfile, $unixtime,
-         source_name => 'VALUE',
-         source_name => 'VALUE',
-         source_name => 'VALUE'
+         source_name => "VALUE",
+         source_name => "VALUE",
+         source_name => "VALUE"
      );
 
 C<$rrdfile> is optional and will default to C<$0.rrd>. (Script basename with
@@ -713,6 +846,16 @@ the file extension of .rrd).
 C<$unixtime> is optional and will default to C<time()> (the current unixtime).
 Specifying this value will determine the date and time that your data point
 values will be stored against in the RRD file.
+
+If you try update a value for a data source that does not exist, it will
+automatically be added for you. The data source type will be set to whatever
+is contained in the C<$RRD::Simple::DEFAULT_DSTYPE> variable. (See the
+VARIABLES section below).
+
+If you explicitly do not want this to happen, then you should check that you
+are only updating pre-existing data source names using the C<sources> method.
+You can manually add new data sources to an RRD file by using the C<add_source>
+method, which requires you to explicitly set the data source type.
 
 =head2 last
 
@@ -731,29 +874,50 @@ the file extension of .rrd).
 =head2 add_source
 
  $rrd->add_source($rrdfile,
-         source_name => 'TYPE'
+         source_name => "TYPE"
      );
 
 C<$rrdfile> is optional and will default to C<$0.rrd>. (Script basename with
 the file extension of .rrd).
+
+You may add a new data source to an existing RRD file using this method. Only
+one data source name can be added at a time. You must also specify the data
+source type.
+
+This method can be called internally by the C<update> method to automatically
+add missing data sources.
 
 =head2 graph
 
  $rrd->graph($rrdfile,
-         destination => '/path/to/write/graph/images',
-         rrd_graph_option => 'value',
-         rrd_graph_option => 'value',
-         rrd_graph_option => 'value'
+         destination => "/path/to/write/graph/images",
+         "line-thickness" => 2,
+         rrd_graph_option => "value",
+         rrd_graph_option => "value",
+         rrd_graph_option => "value"
      );
 
 C<$rrdfile> is optional and will default to C<$0.rrd>. (Script basename with
 the file extension of .rrd).
 
-The C<destination> paramater is optional, and it will default to the same
+Graph options specific to RRD::Simple are:
+
+=over 4
+
+=item "destination"
+
+The C<destination> parameter is optional, and it will default to the same
 path location as that of the RRD file specified by C<$rrdfile>. Specifying
 this value will force the resulting graph images to be written to this path
 location. (The specified path must be a valid directory with the sufficient
 permissions to write the graph images).
+
+=item "line-thickness"
+
+Specifies the thickness of the data lines drawn on the graphs. Valid values
+are 1, 2 and 3 (pixels).
+
+=back
 
 Common RRD graph options are:
 
@@ -781,18 +945,28 @@ and such). This defaults to 100 pixels.
 
 For examples on how to best use the C<graph> method, refer to the example
 scripts that are bundled with this module in the examples/ directory. A
-complete list of paramaters can be found at
+complete list of parameters can be found at
 L<http://people.ee.ethz.ch/~oetiker/webtools/rrdtool/doc/index.en.html>.
+
+=head2 info
+
+ my $info = $rrd->info($rrdfile);
+
+C<$rrdfile> is optional and will default to C<$0.rrd>. (Script basename with
+the file extension of .rrd).
+
+This method will return a complex data structure containing details about
+the RRD file, including RRA and data source information.
 
 =head1 VARIABLES
 
 =head2 $RRD::Simple::DEBUG
 
 Debug and trace information will be printed to STDERR if this variable
-if set to boolean true.
+if set to 1 (boolean true).
 
 This variable will take it's value from C<$ENV{DEBUG}>, if it exists,
-otherwise it will default to C<0> (boolean off). This is a normal package
+otherwise it will default to 0 (boolean false). This is a normal package
 variable and may be safely modified at any time.
 
 =head2 $RRD::Simple::DEFAULT_DSTYPE
@@ -805,6 +979,26 @@ This variable will take it's value from C<$ENV{DEFAULT_DSTYPE}>, if it
 exists, otherwise it will default to C<GAUGE>. This is a normal package
 variable and may be safely modified at any time.
 
+=head1 EXPORTS
+
+You can export the following functions if you do not wish to go through
+the extra effort of using the OO interface:
+
+ create
+ update
+ last_update (synonym for the last() method)
+ sources
+ add_source
+ graph
+ info
+
+The tag C<all> is available to easily export everything:
+
+ use RRD::Simple qw(:all);
+
+See the examples and unit tests in this distribution for more
+details.
+
 =head1 TODO
 
 Finish POD.
@@ -812,7 +1006,7 @@ Finish POD.
 Write the retention duration scheme handling code. (Currently defaults
 to one year retention only).
 
-Write info() and fetch() methods.
+Write fetch() method.
 
 =head1 SEE ALSO
 
@@ -821,7 +1015,7 @@ L<http://www.rrdtool.org>, examples/*.pl
 
 =head1 VERSION
 
-$Id: Simple.pm,v 1.13 2005/12/10 15:56:22 nicolaw Exp $
+$Id: Simple.pm,v 1.19 2005/12/12 11:07:30 nicolaw Exp $
 
 =head1 AUTHOR
 
