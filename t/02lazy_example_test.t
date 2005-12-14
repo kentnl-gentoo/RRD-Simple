@@ -6,20 +6,20 @@ use Test::More tests => 4;
 use lib qw(./lib ../lib);
 use RRD::Simple ();
 
-my $created = time();
 ok(RRD::Simple->create(
 		bytesIn => 'GAUGE',
 		bytesOut => 'GAUGE',
 		faultsPerSec => 'COUNTER'
 	),'create');
 
+my $updated = time();
 ok(RRD::Simple->update(
 		bytesIn => 10039,
 		bytesOut => 389,
 		faultsPerSec => 0.4
 	),'update');
 
-ok(RRD::Simple->last() - $created < 5 && RRD::Simple->last(),
+ok(RRD::Simple->last() - $updated < 5 && RRD::Simple->last(),
 	'last');
 
 ok(join(',',sort RRD::Simple->sources()) eq 'bytesIn,bytesOut,faultsPerSec',

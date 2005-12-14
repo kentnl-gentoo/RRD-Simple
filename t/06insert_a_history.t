@@ -8,11 +8,10 @@ use RRD::Simple ();
 
 ok(my $rrd = RRD::Simple->new(),'new');
 
-my $end = time();
+my $end = time() - 3600;
 my $start = $end - (60 * 60 * 24 * 31);
 my @ds = qw(nicola hannah jennifer hedley heather baya);
 
-my $created = time;
 ok($rrd->create($rrdfile,
 		map { $_ => 'GAUGE' } @ds
 	),'create');
@@ -23,8 +22,7 @@ for (my $t = $start; $t <= $end; $t += 300) {
 		),'update');
 }
 
-ok($rrd->last($rrdfile) - $created < 5 && $rrd->last($rrdfile),
-	'last');
+ok($rrd->last($rrdfile) == $end, 'last');
 
 ok(join(',',sort $rrd->sources($rrdfile)) eq join(',',sort(@ds)),
 	'sources');

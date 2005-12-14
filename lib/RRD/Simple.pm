@@ -11,7 +11,7 @@ use File::Basename qw(fileparse dirname basename);
 use vars qw($VERSION $DEBUG $DEFAULT_DSTYPE
 			 @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = sprintf('%d.%02d', q$Revision: 1.19 $ =~ /(\d+)/g);
+$VERSION = sprintf('%d.%02d', q$Revision: 1.21 $ =~ /(\d+)/g);
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -132,9 +132,17 @@ sub update {
 				 || (!(@_ % 2) && $_[1] =~ /^[1-9][0-9]{8,10}$/i)
 					? shift : _guess_filename();
 
+	# We've been given an update timestamp
+	my $time = time();
+	if (@_ % 2 && $_[0] =~ /^([1-9][0-9]{8,10})$/i) {
+		$time = $1;
+		shift @_;
+	}
+	TRACE("Using update time: $time");
+
 	# Try to automatically create it
 	unless (-f $rrdfile) {
-		cluck "RRD file '$rrdfile' does not exist; attempting to create it",
+		cluck "RRD file '$rrdfile' does not exist; attempting to create it ",
 				"using default DS type of $DEFAULT_DSTYPE";
 		my @args;
 		for (my $i = 0; $i < @_; $i++) {
@@ -145,14 +153,6 @@ sub update {
 
 	croak "RRD file '$rrdfile' does not exist" unless -f $rrdfile;
 	TRACE("Using filename: $rrdfile");
-
-	# We've been given an update timestamp
-	my $time = time();
-	if (@_ % 2 && $_[0] =~ /^([1-9][0-9]{8,10})$/i) {
-		$time = $1;
-		shift @_;
-	}
-	TRACE("Using update time: $time");
 
 	croak 'Odd number of elements passed when even was expected' if @_ % 2;
 
@@ -362,6 +362,23 @@ sub last_values {
 	# Grab or guess the filename
 	my $rrdfile = @_ % 2 ? shift : _guess_filename();
 
+	my $lastUpdated = $self->last($rrdfile);
+	my @def = ('LAST',
+				'-s', $lastUpdated,
+				'-e', $lastUpdated
+			);
+
+	# Pass to RRDs to execute
+	my ($time,$heartbeat,$ds,$data) = RRDs::fetch($rrdfile, @def);
+	my $error = RRDs::error;
+	croak($error) if $error;
+
+	# Put it in to a nice easy format
+	my %rtn = (
+			map { $_ => shift(@{$data->[0]}) } @{$ds}
+		);
+
+	return %rtn;
 }
 
 
@@ -415,8 +432,15 @@ sub _create_graph {
 	$param{'alt-autoscale'} ||= '';
 	$param{'alt-y-grid'} ||= '';
 
+	# Define what to call the image
+	my $basename = defined $param{'basename'} &&
+						$param{'basename'} =~ /^\w+$/i ?
+						$param{'basename'} :
+						(fileparse($rrdfile,'\.[^\.]+'))[0];
+	delete $param{'basename'};
+
 	# Define where to write the image
-	my $image = sprintf('%s.%s.%s',basename($rrdfile),
+	my $image = sprintf('%s-%s.%s',$basename,
 				_alt_graph_name($type), lc($param{'imgformat'}));
 	if ($param{'destination'}) {
 		$image = File::Spec->catfile($param{'destination'},$image);
@@ -428,6 +452,12 @@ sub _create_graph {
 						$param{'line-thickness'} =~ /^[123]$/ ?
 						$param{'line-thickness'} : 1;
 	delete $param{'line-thickness'};
+
+	# Define which data sources we should plot
+	my @ds = defined $param{'sources'} &&
+						ref($param{'sources'}) eq 'ARRAY' ?
+						@{$param{'sources'}} : $self->sources($rrdfile);
+	delete $param{'sources'};
 
 	# Specify a default start time
 	$param{'start'} ||= time - _seconds_in($type);
@@ -461,7 +491,7 @@ sub _create_graph {
 
 	# Add the data sources to the graph
 	my @cmd = ($image,@def);
-	for my $ds ($self->sources($rrdfile)) {
+	for my $ds (@ds) {
 		push @cmd, sprintf('DEF:%s=%s:%s:AVERAGE',$ds,$rrdfile,$ds);
 		push @cmd, sprintf('%s:%s#%s:%-22s',
 				"LINE$line_thickness", $ds, $colour, $ds
@@ -891,6 +921,8 @@ add missing data sources.
 
  $rrd->graph($rrdfile,
          destination => "/path/to/write/graph/images",
+         basename => "graph_basename",
+         sources => [ qw(source_name1 source_name2 source_name3) ],
          "line-thickness" => 2,
          rrd_graph_option => "value",
          rrd_graph_option => "value",
@@ -911,6 +943,28 @@ path location as that of the RRD file specified by C<$rrdfile>. Specifying
 this value will force the resulting graph images to be written to this path
 location. (The specified path must be a valid directory with the sufficient
 permissions to write the graph images).
+
+=item "basename"
+
+The C<basename> paramater is optional. This parameter specifies the basename
+of the graph image files that will be created. If not specified, tt will
+default to the name of the RRD file. For exmaple, if you specify a basename
+name of C<mygraph>, the following graph image files will be created in the
+C<destination> directory:
+
+ mygraph-daily.png
+ mygraph-weekly.png
+ mygraph-monthly.png
+ mygraph-annual.png
+
+The default file format is C<png>, but this can be explicitly specified using
+the standard RRDs options. (See below).
+
+=item "sources"
+
+The C<sources> paramater is optional. This parameter should be an array
+of data source names that you want to be plotted. All data sources will be
+plotted by default.
 
 =item "line-thickness"
 
@@ -1015,7 +1069,7 @@ L<http://www.rrdtool.org>, examples/*.pl
 
 =head1 VERSION
 
-$Id: Simple.pm,v 1.19 2005/12/12 11:07:30 nicolaw Exp $
+$Id: Simple.pm,v 1.21 2005/12/14 20:54:19 nicolaw Exp $
 
 =head1 AUTHOR
 

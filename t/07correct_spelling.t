@@ -8,7 +8,6 @@ use RRD::Simple ();
 
 ok(my $rrd = RRD::Simple->new(),'new');
 
-my $created = time();
 ok($rrd->create($rrdfile, "year",
 		bytesIn => 'GAUGE',
 		bytesOut => 'GAUGE',

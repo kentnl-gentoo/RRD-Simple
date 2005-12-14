@@ -13,7 +13,6 @@ ok(my $rrd = RRD::Simple->new(),'new');
 # bytesIn, bytesOut and faultsPerSec. Data retention
 # of a year is specified. (The data retention parameter
 # is optional and not required).
-my $created = time();
 ok($rrd->create($rrdfile, "year",
 		bytesIn => 'GAUGE',
 		bytesOut => 'GAUGE',
@@ -22,6 +21,7 @@ ok($rrd->create($rrdfile, "year",
 
 # Put some arbitary data values in the RRD file for same
 # 3 data sources called bytesIn, bytesOut and faultsPerSec.
+my $updated = time();
 ok($rrd->update($rrdfile,
 		bytesIn => 10039,
 		bytesOut => 389,
@@ -29,7 +29,7 @@ ok($rrd->update($rrdfile,
 	),'update');
 
 # Get unixtime of when RRD file was last updated
-ok($rrd->last($rrdfile) - $created < 5 && $rrd->last($rrdfile),
+ok($rrd->last($rrdfile) - $updated < 5 && $rrd->last($rrdfile),
 	'last');
 
 ok(join(',',sort $rrd->sources($rrdfile)) eq 'bytesIn,bytesOut,faultsPerSec',
