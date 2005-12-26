@@ -11,7 +11,7 @@ use File::Basename qw(fileparse dirname basename);
 use vars qw($VERSION $DEBUG $DEFAULT_DSTYPE
 			 @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = sprintf('%d.%02d', q$Revision: 1.21 $ =~ /(\d+)/g);
+$VERSION = sprintf('%d.%02d', q$Revision: 1.24 $ =~ /(\d+)/g);
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -75,8 +75,9 @@ sub create {
 	my %ds = @_;
 	DUMP('%ds',\%ds);
 
-	my @def = ('-b', time - _seconds_in('3year'));
-	push @def, '-s', 300;
+	my $rrdDef = _rrd_def($scheme);
+	my @def = ('-b', time - _seconds_in($scheme));
+	push @def, '-s', ($rrdDef->{step} || 300);
 
 	# Add data sources
 	for my $ds (sort keys %ds) {
@@ -84,7 +85,7 @@ sub create {
 		push @def, sprintf('DS:%s:%s:%s:%s:%s',
 						substr($ds,0,19),
 						uc($ds{$ds}),
-						600,
+						($rrdDef->{heartbeat} || 600),
 						'U','U'
 					);
 	}
@@ -92,13 +93,7 @@ sub create {
 	# Add RRA definitions
 	my %cf;
 	for my $cf (qw(AVERAGE MIN MAX LAST)) {
-		my @rra = (
-				{ step => 1, rows => 599 },
-				{ step => 6, rows => 700 },
-				{ step => 24, rows => 775 },
-				{ step => 228, rows => 796 },
-			);
-		$cf{$cf} = \@rra;
+		$cf{$cf} = $rrdDef->{rra};
 	}
 	for my $cf (sort keys %cf) {
 		for my $rra (@{$cf{$cf}}) {
@@ -117,7 +112,6 @@ sub create {
 	DUMP('RRDs::info',RRDs::info($rrdfile));
 	return @rtn;
 }
-
 
 # Update an RRD file with some data values
 sub update {
@@ -275,6 +269,12 @@ sub add_source {
 	croak "RRD file '$rrdfile' does not exist" unless -f $rrdfile;
 	TRACE("Using filename: $rrdfile");
 
+	# Check that we will understand this RRD file version first
+	my $info = $self->info($rrdfile);
+	croak "Unable to add a new data source to $rrdfile; ",
+		"RRD version $info->{rrd_version} is too new"
+		if ($info->{rrd_version}+1-1) > 1;
+
 	my ($ds,$dstype) = @_;
 	TRACE("\$ds = $ds");
 	TRACE("\$dstype = $dstype");
@@ -284,19 +284,15 @@ sub add_source {
 		if -e $rrdfileBackup;
 
 	# Decide what heartbeat to use
-	my $info = RRDs::info($rrdfile);
-	my $error = RRDs::error;
-	croak($error) if $error;
-
-	my %dsHeartbeats;
-	for my $key (grep(/^ds\[.+?\]\.minimal_heartbeat$/,keys %{$info})) {
-		$dsHeartbeats{$info->{$key}}++;
-	}
-	DUMP('%dsHeartbeats',\%dsHeartbeats);
-	my $heartbeat = (sort { $dsHeartbeats{$b} <=> $dsHeartbeats{$a} }
-					keys %dsHeartbeats)[0];
+	my $heartbeat = (sort { $info->{ds}->{$b}->{minimal_heartbeat} <=>
+							$info->{ds}->{$b}->{minimal_heartbeat} }
+					keys %{$info->{ds}})[0];
 	TRACE("\$heartbeat = $heartbeat");
 
+	# Make a list of expected sources after the addition
+	my $TgtSources = join(',',sort(($self->sources($rrdfile),$ds)));
+
+	# Add the data source
 	my $new_rrdfile = '';
 	eval {
 		$new_rrdfile = _add_source(
@@ -304,15 +300,32 @@ sub add_source {
 			);
 	};
 
-	my $TgtSources = join(',',sort(($self->sources($rrdfile),$ds)));
-	if (!$@ && -f $new_rrdfile && $TgtSources eq 
-			join(',',sort($self->sources($new_rrdfile)))) {
-		File::Copy::move($rrdfile,$rrdfileBackup) &&
-			File::Copy::move($new_rrdfile,$rrdfile) &&
-				unlink($rrdfileBackup) ||
-					croak "Failed to move new RRD file in to place: $!";
-	} else {
+	# Barf if the eval{} got upset
+	if ($@) {
 		croak "Failed to add new data source '$ds' to RRD file $rrdfile: $@";
+	}
+
+	# Barf of the new RRD file doesn't exist
+	unless (-f $new_rrdfile) {
+		croak "Failed to add new data source '$ds' to RRD file $rrdfile: ",
+				"new RRD file $new_rrdfile does not exist";
+	}
+
+	# Barf is the new data source isn't in our new RRD file
+	unless ($TgtSources eq join(',',sort($self->sources($new_rrdfile)))) {
+		croak "Failed to add new data source '$ds' to RRD file $rrdfile: ",
+				"new RRD file $new_rrdfile does not contain expected data ",
+				"source names";
+	}
+
+	# Try and move the new RRD file in to place over the existing one
+	# and then remove the backup RRD file if sucessfull
+	if (File::Copy::move($rrdfile,$rrdfileBackup) &&
+				File::Copy::move($new_rrdfile,$rrdfile)) {
+		unlink($rrdfileBackup) ||
+			cluck "Failed to remove back RRD file $rrdfileBackup: $!";
+	} else {
+		croak "Failed to move new RRD file in to place: $!";
 	}
 }
 
@@ -378,6 +391,12 @@ sub last_values {
 			map { $_ => shift(@{$data->[0]}) } @{$ds}
 		);
 
+	# Well, I'll be buggered if the LAST CF does what you'd think
+	# it's meant to do. If anybody can give me some decent documentation
+	# on what the LAST CF does, and/or how to get the last value put
+	# in to an RRD, then I'll admit that this method exists and export
+	# it too.
+
 	return %rtn;
 }
 
@@ -423,6 +442,7 @@ sub _create_graph {
 
 	my %param;
 	while (my $k = shift) {
+		$k =~ s/_/-/g;
 		$param{lc($k)} = shift;
 	}
 
@@ -468,7 +488,7 @@ sub _create_graph {
 	$param{'title'} .= ' - [Weekly Graph: 30 min average]'  if $type eq 'week';
 	$param{'title'} .= ' - [Monthly Graph: 2 hour average]' if $type eq 'month';
 	$param{'title'} .= ' - [Annual Graph: 1 day average]'   if $type eq 'year';
-	$param{'title'} .= ' - [3 Year Graph: 3 day average]'   if $type eq '3year';
+	$param{'title'} .= ' - [3 Year Graph: 1 day average]'   if $type eq '3year';
 
 	# Convert our parameters in to an RRDs friendly defenition
 	my @def;
@@ -500,7 +520,8 @@ sub _create_graph {
 
 	# Add a comment stating when the graph was last updated
 	push @cmd, ('COMMENT:\s','COMMENT:\s','COMMENT:\s');
-	push @cmd, 'COMMENT:Last updated: '.localtime().'\r';
+	(my $time = localtime()) =~ s/:/\\:/g;
+	push @cmd, 'COMMENT:Last updated\: '. $time .'\r';
 
 	DUMP('@cmd',\@cmd);
 
@@ -517,6 +538,51 @@ sub _create_graph {
 #
 # Private subroutines
 #
+
+sub _rrd_def {
+	croak('Pardon?!') if ref $_[0];
+	my $type = _valid_scheme(shift);
+
+	my $rtn = {
+			step => 300, heartbeat => 600,
+			rra => [(
+				{ step => 1, rows => 599 },
+				{ step => 6, rows => 700 },
+				{ step => 24, rows => 775 },
+				{ step => 228, rows => 796 },
+			)],
+		};
+
+	if ($type eq 'day') {
+		@{$rtn->{qw(step heartbeat)}} = qw(60 120);
+		$rtn->{rra} = [
+				{ step => 1, rows => 599 },
+				{ step => 5, rows => 599 },
+			];
+
+	} elsif ($type eq 'week') {
+		@{$rtn->{qw(step heartbeat)}} = qw(60 120);
+		$rtn->{rra} = [
+				{ step => 1, rows => 599 },
+				{ step => 5, rows => 599 },
+				{ step => 30, rows => 599 },
+			];
+
+	} elsif ($type eq 'month') {
+		@{$rtn->{qw(step heartbeat)}} = qw(60 120);
+		$rtn->{rra} = [
+				{ step => 1, rows => 599 },
+				{ step => 5, rows => 500 },
+				{ step => 30, rows => 599 },
+				{ step => 60, rows => 1000 },
+			];
+
+	} elsif ($type eq '3year') {
+		$rtn->{rra}->[3]->{rows} = 2400;
+	}
+
+	return $rtn;
+}
 
 sub _add_source {
 	croak('Pardon?!') if ref $_[0];
@@ -609,8 +675,12 @@ EndDS
 
 	# Import the new output file in to the old RRD filename
 	my $new_rrdfile = File::Temp::tmpnam();
-	_safe_exec(sprintf('%s restore %s %s',
-				$rrdtool,$tempImportXmlFile,$new_rrdfile));
+	my $cmd = sprintf('%s restore %s %s',$rrdtool,$tempImportXmlFile,$new_rrdfile);
+	my $rtn = _safe_exec($cmd);
+
+	# At least check the file is created
+	croak "Command '$cmd' failed to create the new RRD file $new_rrdfile: $rtn"
+		unless -e $new_rrdfile;
 
 	# Remove the temporary files
 	unlink $tempXmlFile;
@@ -635,6 +705,7 @@ sub _alt_graph_name {
 
 sub _valid_scheme {
 	croak('Pardon?!') if ref $_[0];
+	TRACE(@_);
 	if ($_[0] =~ /^(day|week|month|year|3years)$/i) {
 		return lc($1);
 	}
@@ -671,7 +742,15 @@ sub _safe_exec {
 	my $cmd = shift;
 	if ($cmd =~ /^([\/\.\_\-a-zA-Z0-9 >]+)$/) {
 		$cmd = $1;
+		TRACE($cmd);
 		system($cmd);
+		if ($? == -1) {
+			croak "Failed to execute command '$cmd': $!\n";
+		} elsif ($? & 127) {
+			croak(sprintf("While executing command '%s', child died ".
+				"with signal %d, %s coredump\n", $cmd,
+				($? & 127),  ($? & 128) ? 'with' : 'without'));
+		}
 		my $exit_value = $? >> 8;
 		croak "Error caught from '$cmd'" if $exit_value != 0;
 		return $exit_value;
@@ -791,8 +870,8 @@ RRD::Simple - Simple interface to create and store data in RRD files
  my @rtn = $rrd->graph("myfile.rrd",
              destination => "/var/tmp",
              title => "Network Interface eth0",
-             "vertical-label" => "Bytes/Faults",
-             "interlaced" => ""
+             vertical_label => "Bytes/Faults",
+             interlaced => ""
          );
 
  # Return information about an RRD file
@@ -907,6 +986,10 @@ the file extension of .rrd).
          source_name => "TYPE"
      );
 
+B<NOTE>: This method will not currently work with rrdtool v1.2.x (RRD file
+version 003). It is known to work with v1.0.49 and others. This will be fixed
+in future versions of RRD::Simple. 
+
 C<$rrdfile> is optional and will default to C<$0.rrd>. (Script basename with
 the file extension of .rrd).
 
@@ -923,7 +1006,7 @@ add missing data sources.
          destination => "/path/to/write/graph/images",
          basename => "graph_basename",
          sources => [ qw(source_name1 source_name2 source_name3) ],
-         "line-thickness" => 2,
+         line_thickness => 2,
          rrd_graph_option => "value",
          rrd_graph_option => "value",
          rrd_graph_option => "value"
@@ -966,7 +1049,7 @@ The C<sources> paramater is optional. This parameter should be an array
 of data source names that you want to be plotted. All data sources will be
 plotted by default.
 
-=item "line-thickness"
+=item "line_thickness"
 
 Specifies the thickness of the data lines drawn on the graphs. Valid values
 are 1, 2 and 3 (pixels).
@@ -1057,19 +1140,18 @@ details.
 
 Finish POD.
 
-Write the retention duration scheme handling code. (Currently defaults
-to one year retention only).
+Fix the add_source() method to work with the latest versions of RRD.
 
-Write fetch() method.
+Write a fetch() method.
 
 =head1 SEE ALSO
 
-L<RRDTool::Managed>, L<RRDTool::OO>, L<RRD::Query>, L<RRDs>,
+L<RRDTool::OO>, L<RRDs>,
 L<http://www.rrdtool.org>, examples/*.pl
 
 =head1 VERSION
 
-$Id: Simple.pm,v 1.21 2005/12/14 20:54:19 nicolaw Exp $
+$Id: Simple.pm,v 1.24 2005/12/26 19:04:22 nicolaw Exp $
 
 =head1 AUTHOR
 
