@@ -11,7 +11,7 @@ use File::Basename qw(fileparse dirname basename);
 use vars qw($VERSION $DEBUG $DEFAULT_DSTYPE
 			 @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = sprintf('%d.%02d', q$Revision: 1.24 $ =~ /(\d+)/g);
+$VERSION = sprintf('%d.%02d', q$Revision: 1.25 $ =~ /(\d+)/g);
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -37,7 +37,7 @@ sub new {
 	my $validkeys = join('|',qw(rrdtool));
 	cluck('Unrecognised parameters passed: '.
 		join(', ',grep(!/^$validkeys$/,keys %{$self})))
-		if grep(!/^$validkeys$/,keys %{$self});
+		if (grep(!/^$validkeys$/,keys %{$self}) && $^W);
 
 	$self->{rrdtool} = _find_binary(exists $self->{rrdtool} ?
 						$self->{rrdtool} : 'rrdtool');
@@ -136,8 +136,8 @@ sub update {
 
 	# Try to automatically create it
 	unless (-f $rrdfile) {
-		cluck "RRD file '$rrdfile' does not exist; attempting to create it ",
-				"using default DS type of $DEFAULT_DSTYPE";
+		cluck("RRD file '$rrdfile' does not exist; attempting to create it ",
+				"using default DS type of $DEFAULT_DSTYPE") if $^W;
 		my @args;
 		for (my $i = 0; $i < @_; $i++) {
 			push @args, ($_[$i],$DEFAULT_DSTYPE) unless $i % 2;
@@ -167,7 +167,7 @@ sub update {
 			if (grep(/^$ds$/i,@sources)) {
 				cluck("Data source '$ds' does not exist. Automatically ",
 					"correcting it to '",(grep(/^$ds$/i,@sources))[0],
-					"' instead");
+					"' instead") if $^W;
 				$ds{(grep(/^$ds$/i,@sources))[0]} = $ds{$ds};
 				delete $ds{$ds};
 
@@ -263,7 +263,8 @@ sub add_source {
 	# Grab or guess the filename
 	my $rrdfile = @_ % 2 ? shift : _guess_filename();
 	unless (-f $rrdfile) {
-		cluck "RRD file '$rrdfile' does not exist; attempting to create it";
+		cluck("RRD file '$rrdfile' does not exist; attempting to create it")
+			if $^W;
 		return $self->create($rrdfile,@_);
 	}
 	croak "RRD file '$rrdfile' does not exist" unless -f $rrdfile;
@@ -322,8 +323,10 @@ sub add_source {
 	# and then remove the backup RRD file if sucessfull
 	if (File::Copy::move($rrdfile,$rrdfileBackup) &&
 				File::Copy::move($new_rrdfile,$rrdfile)) {
-		unlink($rrdfileBackup) ||
-			cluck "Failed to remove back RRD file $rrdfileBackup: $!";
+		unless (unlink($rrdfileBackup)) {
+			cluck("Failed to remove back RRD file $rrdfileBackup: $!")
+				if $^W;
+		}
 	} else {
 		croak "Failed to move new RRD file in to place: $!";
 	}
@@ -1151,7 +1154,7 @@ L<http://www.rrdtool.org>, examples/*.pl
 
 =head1 VERSION
 
-$Id: Simple.pm,v 1.24 2005/12/26 19:04:22 nicolaw Exp $
+$Id: Simple.pm,v 1.25 2005/12/28 15:56:13 nicolaw Exp $
 
 =head1 AUTHOR
 

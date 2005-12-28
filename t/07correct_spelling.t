@@ -20,11 +20,23 @@ ok($rrd->update($rrdfile,
 		faultsPerSec => 4
 	),'update');
 
+#
+# Updating a data source with incorrect case while perl
+# warnings are enabled will cause a warning message to be
+# printed. This might alarm people if it is output during
+# the unit tests, so we will disable warnings for this
+# part of the tests.
+#
+
+my $oldW = $^W; $^W = 0;
+
 ok($rrd->update($rrdfile,time+1,
 		bytesIn => 11003,
 		BytesOUT => 201,
 		faultsPerSec => 2
 	),'update');
+
+$^W = $oldW;
 
 ok(join(',',sort $rrd->sources($rrdfile)) eq 'bytesIn,bytesOut,faultsPerSec',
 	'sources');

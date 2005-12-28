@@ -1,0 +1,83 @@
+Version 1.25 - Unreleased
+    + Added Changes file.
+
+    + Changed cluck warnings to only be output when perl
+      warnings are enabled ($^W is set true).
+
+    + t/04lazy_create_by_update.t
+      t/07correct_spelling.t
+      -- Disabled warnings being output for some unit tests
+         so as not to alarm people. (The warnings are
+         intentional when $^W is true, so it is deliberately
+         set to false for those tests).
+
+    + Modified Makefile.PL to send anonymous information to
+      http://perlgirl.org.uk/lib/usage.cgi if the user
+      agrees. This is so I can track which of my modules
+      are most heavily used and on what platforms, so I can
+      concentrate on maintaning the most popular ones in
+      my limited spare time.
+
+
+Version 1.24 - 26th December 2005
+    + Added explicit specification of a data retention
+      period (internally to RRD::Simple called a scheme).
+
+    + Added checking of RRD file versions before
+      attempting to add a new data source to an existing
+      RRD file. add_source() can only be used on RRD
+      version 001 files at the moment (rrdtool version
+      1.0.x). Unit tests have been updated to take this
+      in to account and skip if necessary.
+
+    + Tidied and improved some of the error messages that
+      are returned if the addition of a new data source
+      to an existing RRD file fails.
+
+    + Fixed escaping of the time date stamp that is added
+      to the graphs so that it is compatible with rrdtool
+      version 1.2.x.
+
+    + Altered parsing of arguments to the graph() method
+      so that _ characters are converted to - characters
+      before passing to the RRDs module. This negated the
+      need to quote a number or arguments that are passed
+      in to the graph() method.
+
+    + Added some more comments in the code.
+
+    + Added some more POD.
+
+
+Version 1.21 - 14th December 2005
+    + Added examples/ApacheAccessLogActivity.pl
+      -- Example script to import apache access log
+         files in to a simple RRD file for graphing
+
+    + Fixed a bug in the update() method to allow explicit
+      specification of data insertion time. Previously if no
+      RRD file was specified, the explicitly specified
+      insertion time would have incorrectly been used as the
+      RRD filename.
+
+    + Added an experimental last_values() method to return
+      the last values stored in the LAST CF RRA. This is not
+      currently documented because it does not function as
+      you would logically expect.
+
+    + Added t/09last_value.t
+      -- This test is essentially skipped because the output
+         is not as you might expect. It will be enabled once
+         the last_values() method is working better.
+
+    + Added the 'basename' argument to the graph() method.
+
+    + Added the 'sources' argument to the graph() method.
+
+    + Fixed a few minor typos in warning messages.
+
+    + Added more POD.
+
+    + Improved unit tests.
+
+
