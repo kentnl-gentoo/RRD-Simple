@@ -2,7 +2,8 @@ Changes
 MANIFEST
 lib/RRD/Simple.pm
 Makefile.PL
-COPYING
+NOTICE
+LICENSE
 INSTALL
 README
 TODO

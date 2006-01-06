@@ -1,4 +1,27 @@
-Version 1.25 - Unreleased
+Version 1.29 - 6th January 2006
+    + Improved makefile version extraction.
+
+    + Changed license to Apache 2.0
+      http://www.apache.org/licenses/LICENSE-2.0
+
+    + Changed escaping on date in graph() to only happen
+      with RRDs version 1.2 or greater (escaping should not
+      be used with version 1.0)
+
+    + Changed how the last values are pulled from the RRA
+      in the last_values() method so it's more reliable
+      now.
+
+    + Fixed add_source() to work with rrdtool 1.2x and RRD
+      version 0003 files.
+
+    + Added /usr/local/rrdtool*/bin/ to the search path
+      when looking for the rrdtool binary.
+
+    + Tweaked Makefile.PL
+
+
+Version 1.25 - 28th December 2005
     + Added Changes file.
 
     + Changed cluck warnings to only be output when perl

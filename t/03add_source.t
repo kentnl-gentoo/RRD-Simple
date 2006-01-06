@@ -22,8 +22,8 @@ SKIP: {
 	my $info = {};
 	ok($info = $rrd->info($rrdfile),'info');
 
-	skip("RRD file version $info->{rrd_version} is too new to add data source",2)
-		if ($info->{rrd_version}+1-1) > 1;
+#	skip("RRD file version $info->{rrd_version} is too new to add data source",2)
+#		if ($info->{rrd_version}+1-1) > 1;
 
 	ok($rrd->update($rrdfile,
 			bytesIn => 10039,

@@ -1,17 +1,38 @@
+############################################################
+#
+#   $Id: Simple.pm,v 1.29 2006/01/06 14:37:45 nicolaw Exp $
+#   RRD::Simple - Simple interface to create and store data in RRD files
+#
+#   Copyright 2005,2006 Nicola Worthington
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+############################################################
+
 package RRD::Simple;
 # vim:ts=4:sw=4:tw=78
 
 use strict;
 use Exporter;
 use RRDs;
-use Carp qw(croak cluck confess);
+use Carp qw(croak cluck confess carp);
 use File::Spec;
 use File::Basename qw(fileparse dirname basename);
 
 use vars qw($VERSION $DEBUG $DEFAULT_DSTYPE
 			 @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = sprintf('%d.%02d', q$Revision: 1.25 $ =~ /(\d+)/g);
+$VERSION = sprintf('%d.%02d', q$Revision: 1.29 $ =~ /(\d+)/g);
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -272,9 +293,9 @@ sub add_source {
 
 	# Check that we will understand this RRD file version first
 	my $info = $self->info($rrdfile);
-	croak "Unable to add a new data source to $rrdfile; ",
-		"RRD version $info->{rrd_version} is too new"
-		if ($info->{rrd_version}+1-1) > 1;
+#	croak "Unable to add a new data source to $rrdfile; ",
+#		"RRD version $info->{rrd_version} is too new"
+#		if ($info->{rrd_version}+1-1) > 1;
 
 	my ($ds,$dstype) = @_;
 	TRACE("\$ds = $ds");
@@ -378,9 +399,18 @@ sub last_values {
 	# Grab or guess the filename
 	my $rrdfile = @_ % 2 ? shift : _guess_filename();
 
+	# When was the RRD last updated?
 	my $lastUpdated = $self->last($rrdfile);
+
+	# What's the largest heartbeat in the RRD file data sources?
+	my $info = $self->info($rrdfile);
+	my $largestHeartbeat = 1;
+	for (map { $info->{ds}->{$_}->{'minimal_heartbeat'} } keys(%{$info->{ds}})) {
+		$largestHeartbeat = $_ if $_ > $largestHeartbeat;
+	}
+
 	my @def = ('LAST',
-				'-s', $lastUpdated,
+				'-s', $lastUpdated - ($largestHeartbeat * 2),
 				'-e', $lastUpdated
 			);
 
@@ -390,9 +420,20 @@ sub last_values {
 	croak($error) if $error;
 
 	# Put it in to a nice easy format
-	my %rtn = (
-			map { $_ => shift(@{$data->[0]}) } @{$ds}
-		);
+	my %rtn;
+	for my $rec (reverse @{$data}) {
+		for (my $i = 0; $i < @{$rec}; $i++) {
+			if (defined $rec->[$i] && !exists($rtn{$ds->[$i]})) {
+				$rtn{$ds->[$i]} = $rec->[$i];
+			}
+		}
+	}
+
+#	This is a bad assumption in code - the above replacement searches
+#	for the last defined values
+#	my %rtn = (
+#			map { $_ => shift(@{$data->[0]}) } @{$ds}
+#		);
 
 	# Well, I'll be buggered if the LAST CF does what you'd think
 	# it's meant to do. If anybody can give me some decent documentation
@@ -523,8 +564,9 @@ sub _create_graph {
 
 	# Add a comment stating when the graph was last updated
 	push @cmd, ('COMMENT:\s','COMMENT:\s','COMMENT:\s');
-	(my $time = localtime()) =~ s/:/\\:/g;
-	push @cmd, 'COMMENT:Last updated\: '. $time .'\r';
+	my $time = 'Last updated: '.localtime().'\r';
+	$time =~ s/:/\\:/g if $RRDs::VERSION >= 1.2; # Only escape for 1.2
+	push @cmd, "COMMENT:$time";
 
 	DUMP('@cmd',\@cmd);
 
@@ -609,6 +651,7 @@ sub _add_source {
 				insertDS => 0,
 				insertCDP_PREP => 0,
 				parse => 0,
+				version => 1,
 			};
 
 	# Parse the input XML file
@@ -628,7 +671,7 @@ sub _add_source {
 
 		<!-- PDP Status -->
 		<last_ds> UNKN </last_ds>
-		<value> 1.8530980000e+01 </value>
+		<value> 0.0000000000e+00 </value>
 		<unknown_sec> 0 </unknown_sec>
 	</ds>
 EndDS
@@ -637,7 +680,19 @@ EndDS
 
 		# Insert DS under CDP_PREP entity
 		if ($marker->{insertCDP_PREP} == 1) {
-			print OUT "			<ds><value> NaN </value>  <unknown_datapoints> 0 </unknown_datapoints></ds>\n";
+			# Version 0003 RRD from rrdtool 1.2x
+			if ($marker->{version} >= 3) {
+				print OUT "			<ds>\n";
+				print OUT "			<primary_value> 0.0000000000e+00 </primary_value>\n";
+				print OUT "			<secondary_value> 0.0000000000e+00 </secondary_value>\n";
+				print OUT "			<value> NaN </value>\n";
+				print OUT "			<unknown_datapoints> 0 </unknown_datapoints>\n";
+				print OUT "			</ds>\n";
+
+			# Version 0001 RRD from rrdtool 1.0x
+			} else { 
+				print OUT "			<ds><value> NaN </value>  <unknown_datapoints> 0 </unknown_datapoints></ds>\n";
+			}
 			$marker->{insertCDP_PREP} = 0;
 		}
 
@@ -652,6 +707,10 @@ EndDS
 		# Look for the end of an RRA
 		} elsif (/<\/database>/) {
 			$marker->{parse} = 0;
+
+		# Find the dumped RRD version (must take from the XML, not the RRD)
+		} elsif (/<version>\s*([0-9\.]+)\s*<\/version>/) {
+			$marker->{version} = ($1 + 1 - 1);
 		}
 
 		# Add the extra "<v> NaN </v>" under the RRAs. Just print normal lines
@@ -777,6 +836,16 @@ sub _find_binary {
 	for my $path (@paths) {
 		my $filename = File::Spec->catfile($path,$binary);
 		return $filename if -f $filename && -x $filename;
+	}
+
+	my $path = File::Spec->catdir(File::Spec->rootdir(),'usr','local');
+	if (opendir(DH,$path)) {
+		my @dirs = grep(/^rrdtool/,readdir(DH));
+		closedir(DH) || carp "Unable to close file handle: $!";
+		for my $dir (@dirs) {
+			my $filename = File::Spec->catfile($path,$dir,'bin',$binary);
+			return $filename if -f $filename && -x $filename;
+		}
 	}
 }
 
@@ -1154,7 +1223,7 @@ L<http://www.rrdtool.org>, examples/*.pl
 
 =head1 VERSION
 
-$Id: Simple.pm,v 1.25 2005/12/28 15:56:13 nicolaw Exp $
+$Id: Simple.pm,v 1.29 2006/01/06 14:37:45 nicolaw Exp $
 
 =head1 AUTHOR
 
@@ -1164,11 +1233,11 @@ L<http://perlgirl.org.uk>
 
 =head1 COPYRIGHT
 
-(c) Nicola Worthington 2005. This program is free software; you can
-redistribute it and/or modify it under the GNU GPL.
+Copyright 2005,2006 Nicola Worthington.
 
-See the file COPYING in this distribution, or
-L<http://www.gnu.org/licenses/gpl.txt>
+This software is licensed under The Apache Software License, Version 2.0.
+
+L<http://www.apache.org/licenses/LICENSE-2.0>
 
 =cut
 
