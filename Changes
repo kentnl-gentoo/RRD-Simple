@@ -1,3 +1,53 @@
+Version 1.30 - 15th January 2006
+    + Removed notice about add_source() not working with
+      latest versions of RRD from the POD.
+
+    + Added Test::Pod and Test::Pod::Coverage unit tests
+
+    + The graph() method now allows arrays to be passed
+      as key value options, thus allowing many --colour
+      values to be set
+
+    + Added the "source_colors" parameter to the graph()
+      method to specify the plotted data source line colours
+
+    + Added the "source_labels" parameter to the graph()
+      method to specify data source labels in the legend/key
+
+    + Changed the add_source() method to try and use
+      the RRDs module for all the needed rrdtool
+      functionality, instead of having to spawn an external
+      copy of the rrdtool binary. A patch submitted to
+      Tobi on 2006/01/08 which should be available in the
+      1.2.13 release of rrdtool will allow RRDs::dump to
+      dump to a filename instead of STDOUT, this removing
+      the need for RRD::Simple to use the rrdtool binary
+      at all.
+
+    + Tweaked POD a little
+
+    + Fixed some typos in the code where "3year" and "3years"
+      were being mixed up. They have all been changed to be
+      "3years" now, as per the POD.
+
+    + Added the retention_period() method to return (in 
+      seconds) how long the RRD will store data for.
+
+    + The graph() method will now only generate graphs which
+      the RRD file has enough data for. (ie, a 1 week long
+      RRD file will not try and generate a 3 year graph etc)
+
+    + Fixed a bug whereby the create() method and the graph()
+      method were both getting the same values back from the
+      _seconds_in() function, which should not be the case.
+      This was resulting in blocky graphs because there was
+      not enough margin between RRA boundies to ensure that
+      each graph was getting the highest resolution data that
+      you would expect. Also, _seconds_in() was returning
+      slightly too high values, which indirectly caused the
+      X asis labels to overlap eachother in some instances.
+
+
 Version 1.29 - 6th January 2006
     + Improved makefile version extraction.
 

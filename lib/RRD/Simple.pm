@@ -1,6 +1,6 @@
 ############################################################
 #
-#   $Id: Simple.pm,v 1.29 2006/01/06 14:37:45 nicolaw Exp $
+#   $Id: Simple.pm,v 1.30 2006/01/15 23:20:20 nicolaw Exp $
 #   RRD::Simple - Simple interface to create and store data in RRD files
 #
 #   Copyright 2005,2006 Nicola Worthington
@@ -32,7 +32,7 @@ use File::Basename qw(fileparse dirname basename);
 use vars qw($VERSION $DEBUG $DEFAULT_DSTYPE
 			 @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = sprintf('%d.%02d', q$Revision: 1.29 $ =~ /(\d+)/g);
+$VERSION = sprintf('%d.%02d', q$Revision: 1.30 $ =~ /(\d+)/g);
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -97,7 +97,7 @@ sub create {
 	DUMP('%ds',\%ds);
 
 	my $rrdDef = _rrd_def($scheme);
-	my @def = ('-b', time - _seconds_in($scheme));
+	my @def = ('-b', time - _seconds_in($scheme,120));
 	push @def, '-s', ($rrdDef->{step} || 300);
 
 	# Add data sources
@@ -365,11 +365,14 @@ sub graph {
 	# Grab or guess the filename
 	my $rrdfile = @_ % 2 ? shift : _guess_filename();
 
+	# How much data do we have to graph?
+	my $period = $self->retention_period($rrdfile);
+
 	my @rtn;
-	for my $type (qw(day week month year)) {
+	for my $type (qw(day week month year 3years)) {
+		next if $period < _seconds_in($type);
 		push @rtn, [ ($self->_create_graph($rrdfile, $type, @_)) ];
 	}
-	#push @rtn, [ ($self->_create_graph($rrdfile, '3year', @_)) ];
 	return @rtn;
 }
 
@@ -445,6 +448,27 @@ sub last_values {
 }
 
 
+# Return how long this RRD retains data for
+sub retention_period {
+	my $self = shift;
+	unless(ref $self eq __PACKAGE__ || UNIVERSAL::isa($self, __PACKAGE__)) {
+		unshift @_, $self;
+		$self = new __PACKAGE__;
+	}
+
+	my $info = $self->info(@_);
+	return undef if !defined($info);
+
+	my $duration = $info->{step};
+	for my $rra (@{$info->{rra}}) {
+		my $secs = ($rra->{pdp_per_row} * $info->{step}) * $rra->{rows};
+		$duration = $secs if $secs > $duration;
+	}
+
+	return $duration;
+}
+
+
 # Fetch information about an RRD file
 sub info {
 	my $self = shift;
@@ -490,11 +514,13 @@ sub _create_graph {
 		$param{lc($k)} = shift;
 	}
 
+
 	# Specify some default values
 	$param{'end'} ||= time();
 	$param{'imgformat'} ||= 'PNG';
 	$param{'alt-autoscale'} ||= '';
 	$param{'alt-y-grid'} ||= '';
+
 
 	# Define what to call the image
 	my $basename = defined $param{'basename'} &&
@@ -511,54 +537,117 @@ sub _create_graph {
 	}
 	delete $param{'destination'};
 
+
 	# Define how thick the graph lines should be
 	my $line_thickness = defined $param{'line-thickness'} &&
 						$param{'line-thickness'} =~ /^[123]$/ ?
 						$param{'line-thickness'} : 1;
 	delete $param{'line-thickness'};
 
+
+	# Colours is an alias to colors
+	if (exists $param{'source-colours'} && !exists $param{'source-colors'}) {
+		$param{'source-colors'} = $param{'source-colours'};
+		delete $param{'source-colours'};
+	}
+
+	# Allow source line colors to be set
+	my @source_colors = ();
+	my %source_colors = ();
+	if (defined $param{'source-colors'}) {
+		if (ref($param{'source-colors'}) eq 'ARRAY') {
+			@source_colors = @{$param{'source-colors'}};
+		} elsif (ref($param{'source-colors'}) eq 'HASH') {
+			%source_colors = %{$param{'source-colors'}};
+	#	} elsif (!ref($param{'source-colors'})) {
+	#		@source_colors = [ ($param{'source-colors'}) ];
+		}
+	}
+	delete $param{'source-colors'};
+
+
 	# Define which data sources we should plot
 	my @ds = defined $param{'sources'} &&
 						ref($param{'sources'}) eq 'ARRAY' ?
 						@{$param{'sources'}} : $self->sources($rrdfile);
+
+	# Allow source legend source_labels to be set
+	my %source_labels = ();
+	if (defined $param{'source-labels'}) {
+		if (ref($param{'source-labels'}) eq 'HASH') {
+			%source_labels = %{$param{'source-labels'}};
+		} elsif (ref($param{'source-labels'}) eq 'ARRAY') {
+			unless (defined $param{'sources'} &&
+					ref($param{'sources'}) eq 'ARRAY') {
+				carp "source_labels may only be an array if sources is ".
+					"also an specified and valid array" if $^W;
+			} else {
+				for (my $i = 0; $i < @{$param{'source-labels'}}; $i++) {
+					$source_labels{$ds[$i]} = $param{'source-labels'}->[$i];
+				}
+			}
+		}
+	}
+	delete $param{'source-labels'};
 	delete $param{'sources'};
 
+
 	# Specify a default start time
-	$param{'start'} ||= time - _seconds_in($type);
+	$param{'start'} ||= time - _seconds_in($type,110);
 
 	# Suffix the title with the period information
 	$param{'title'} ||= basename($rrdfile);
-	$param{'title'} .= ' - [Daily Graph: 5 min average]'    if $type eq 'day';
-	$param{'title'} .= ' - [Weekly Graph: 30 min average]'  if $type eq 'week';
-	$param{'title'} .= ' - [Monthly Graph: 2 hour average]' if $type eq 'month';
-	$param{'title'} .= ' - [Annual Graph: 1 day average]'   if $type eq 'year';
-	$param{'title'} .= ' - [3 Year Graph: 1 day average]'   if $type eq '3year';
+#
+# TODO - These X foo average source_labels need to be fixed so that they
+#        are correct and representative for RRD file lengths other
+#        than the 1 and 3 year RRD files
+#
+	$param{'title'} .= ' - [Daily Graph]'   if $type eq 'day';
+	$param{'title'} .= ' - [Weekly Graph]'  if $type eq 'week';
+	$param{'title'} .= ' - [Monthly Graph]' if $type eq 'month';
+	$param{'title'} .= ' - [Annual Graph]'  if $type eq 'year';
+	$param{'title'} .= ' - [3 Year Graph]'  if $type eq '3years';
+
+#	$param{'title'} .= ' - [Daily Graph: 5 min average]'    if $type eq 'day';
+#	$param{'title'} .= ' - [Weekly Graph: 30 min average]'  if $type eq 'week';
+#	$param{'title'} .= ' - [Monthly Graph: 2 hour average]' if $type eq 'month';
+#	$param{'title'} .= ' - [Annual Graph: 1 day average]'   if $type eq 'year';
+#	$param{'title'} .= ' - [3 Year Graph: 1 day average]'   if $type eq '3years';
+
 
 	# Convert our parameters in to an RRDs friendly defenition
 	my @def;
 	while (my ($k,$v) = each %param) {
 		if (length($k) == 1) { $k = '-'.uc($k); }
 		else { $k = "--$k"; }
-		if (!defined $v || !length($v)) {
-			push @def, $k;
-		} else {
-			push @def, "$k=$v";
+		for my $v ((ref($v) eq 'ARRAY' ? @{$v} : ($v))) {
+			if (!defined $v || !length($v)) {
+				push @def, $k;
+			} else {
+				push @def, "$k=$v";
+			}
 		}
 	}
 
-	# Populate a cycling tied scalar for line colours
-	tie my $colour, 'RRD::Simple::_Colour', [ qw(
+
+	# Populate a cycling tied scalar for line colors
+	@source_colors = qw(
 			FF0000 00FF00 0000FF FFFF00 00FFFF FF00FF 000000
 			550000 005500 000055 555500 005555 550055 555555
 			AA0000 00AA00 0000AA AAAA00 00AAAA AA00AA AAAAAA
-		) ];
+		) unless @source_colors > 0;
+	tie my $colour, 'RRD::Simple::_Colour', \@source_colors;
 
 	# Add the data sources to the graph
 	my @cmd = ($image,@def);
 	for my $ds (@ds) {
 		push @cmd, sprintf('DEF:%s=%s:%s:AVERAGE',$ds,$rrdfile,$ds);
-		push @cmd, sprintf('%s:%s#%s:%-22s',
-				"LINE$line_thickness", $ds, $colour, $ds
+		#push @cmd, sprintf('%s:%s#%s:%-22s',
+		push @cmd, sprintf('%s:%s#%s:%s',
+				"LINE$line_thickness",
+				$ds,
+				(defined $source_colors{$ds} ? $source_colors{$ds} : $colour),
+				(defined $source_labels{$ds} ? $source_labels{$ds} : $ds),
 			);
 	}
 
@@ -601,28 +690,28 @@ sub _rrd_def {
 	if ($type eq 'day') {
 		@{$rtn->{qw(step heartbeat)}} = qw(60 120);
 		$rtn->{rra} = [
-				{ step => 1, rows => 599 },
-				{ step => 5, rows => 599 },
+				{ step => 1, rows => 600 },
+				{ step => 5, rows => 600 },
 			];
 
 	} elsif ($type eq 'week') {
 		@{$rtn->{qw(step heartbeat)}} = qw(60 120);
 		$rtn->{rra} = [
-				{ step => 1, rows => 599 },
-				{ step => 5, rows => 599 },
-				{ step => 30, rows => 599 },
+				{ step => 1, rows => 600 },
+				{ step => 5, rows => 600 },
+				{ step => 30, rows => 600 },
 			];
 
 	} elsif ($type eq 'month') {
 		@{$rtn->{qw(step heartbeat)}} = qw(60 120);
 		$rtn->{rra} = [
-				{ step => 1, rows => 599 },
+				{ step => 1, rows => 600 },
 				{ step => 5, rows => 500 },
-				{ step => 30, rows => 599 },
+				{ step => 30, rows => 600 },
 				{ step => 60, rows => 1000 },
 			];
 
-	} elsif ($type eq '3year') {
+	} elsif ($type eq '3years') {
 		$rtn->{rra}->[3]->{rows} = 2400;
 	}
 
@@ -638,7 +727,26 @@ sub _add_source {
 
 	# Generate an XML dump of the RRD file
 	my $tempXmlFile = File::Temp::tmpnam();
-	_safe_exec(sprintf('%s dump %s > %s',$rrdtool,$rrdfile,$tempXmlFile));
+
+	# Try the internal perl way first (portable)
+	eval {
+		# Patch to rrd_dump.c emailed to Tobi and developers
+		# list by nicolaw/heds on 2006/01/08
+		if ($RRDs::VERSION >= 1.2013) {
+			my @rtn = RRDs::dump($rrdfile,$tempXmlFile);
+			my $error = RRDs::error;
+			croak($error) if $error;
+		}
+	};
+
+	# Do it the old fashioned way
+	if ($@ || !-f $tempXmlFile || (stat($tempXmlFile))[7] < 200) {
+		croak "rrdtool binary '$rrdtool' does not exist or is not executable"
+			unless (-f $rrdtool && -x $rrdtool);
+		_safe_exec(sprintf('%s dump %s > %s',$rrdtool,$rrdfile,$tempXmlFile));
+	}
+
+	# Read in the new temporary XML dump file
 	open(IN, "<$tempXmlFile") || croak "Unable to open '$tempXmlFile': $!";
 
 	# Open XML output file
@@ -737,16 +845,38 @@ EndDS
 
 	# Import the new output file in to the old RRD filename
 	my $new_rrdfile = File::Temp::tmpnam();
-	my $cmd = sprintf('%s restore %s %s',$rrdtool,$tempImportXmlFile,$new_rrdfile);
-	my $rtn = _safe_exec($cmd);
 
-	# At least check the file is created
-	croak "Command '$cmd' failed to create the new RRD file $new_rrdfile: $rtn"
-		unless -e $new_rrdfile;
+	# Try the internal perl way first (portable)
+	eval {
+		if ($RRDs::VERSION >= 1.0049) {
+			my @rtn = RRDs::restore($tempImportXmlFile,$new_rrdfile);
+			my $error = RRDs::error;
+			croak($error) if $error;
+		}
+	};
+
+	# Do it the old fashioned way
+	if ($@ || !-f $new_rrdfile || (stat($new_rrdfile))[7] < 200) {
+		croak "rrdtool binary '$rrdtool' does not exist or is not executable"
+			unless (-f $rrdtool && -x $rrdtool);
+		my $cmd = sprintf('%s restore %s %s',$rrdtool,$tempImportXmlFile,$new_rrdfile);
+		my $rtn = _safe_exec($cmd);
+
+		# At least check the file is created
+		unless (-f $new_rrdfile) {
+			_nuke_tmp($tempXmlFile,$tempImportXmlFile);
+			croak "Command '$cmd' failed to create the new RRD file $new_rrdfile: $rtn";
+		}
+	}
 
 	# Remove the temporary files
-	unlink $tempXmlFile;
-	unlink $tempImportXmlFile;
+	_nuke_tmp($tempXmlFile,$tempImportXmlFile);
+	sub _nuke_tmp {
+		for (@_) {
+			unlink($_) ||
+				carp("Unable to unlink temporary file '$_': $!");
+		}
+	}
 
 	# Return the new RRD filename
 	return $new_rrdfile;
@@ -778,6 +908,9 @@ sub _valid_scheme {
 sub _seconds_in {
 	croak('Pardon?!') if ref $_[0];
 	my $str = lc(shift);
+	my $scale = shift || 100;
+
+	return undef if !defined(_valid_scheme($str));
 
 	my %time = (
 			day   => 86400,    # 60 * 60 * 24
@@ -785,17 +918,21 @@ sub _seconds_in {
 			month => 2678400,  # 60 * 60 * 24 * 31
 			year  => 31536000, # 60 * 60 * 24 * 365
 		);
+	$time{'3years'} = $time{'year'} * 3;
 
-	if ($str eq 'day') {
-		return $time{day} * 2;
-	} elsif ($str eq 'week') {
-		return $time{week} + $time{day};
-	} elsif ($str eq 'month') {
-		return $time{month} + $time{week};
-	} elsif ($str eq '3year') {
-		return ($time{year} * 3) + $time{month};
-	}
-	return $time{year} + $time{month};
+#	if ($str eq 'day') {
+#		return $time{day} * 2;
+#	} elsif ($str eq 'week') {
+#		return $time{week} + $time{day};
+#	} elsif ($str eq 'month') {
+#		return $time{month} + $time{week};
+#	} elsif ($str eq '3years') {
+#		return ($time{year} * 3) + $time{month};
+#	}
+#	return $time{year} + $time{month};
+
+	my $rtn = $time{$str} * ($scale / 100);
+	return $rtn;
 }
 
 
@@ -840,7 +977,7 @@ sub _find_binary {
 
 	my $path = File::Spec->catdir(File::Spec->rootdir(),'usr','local');
 	if (opendir(DH,$path)) {
-		my @dirs = grep(/^rrdtool/,readdir(DH));
+		my @dirs = sort { $b cmp $a } grep(/^rrdtool/,readdir(DH));
 		closedir(DH) || carp "Unable to close file handle: $!";
 		for my $dir (@dirs) {
 			my $filename = File::Spec->catfile($path,$dir,'bin',$binary);
@@ -938,7 +1075,9 @@ RRD::Simple - Simple interface to create and store data in RRD files
              faultsPerSec => 0.4
          );
  
- # Generate graphs
+ # Generate graphs:
+ # /var/tmp/myfile-daily.png, /var/tmp/myfile-weekly.png
+ # /var/tmp/myfile-monthly.png, /var/tmp/myfile-annual.png
  my @rtn = $rrd->graph("myfile.rrd",
              destination => "/var/tmp",
              title => "Network Interface eth0",
@@ -975,7 +1114,7 @@ It does however create RRD files with a sensible set of default RRA
 data source names to an existing RRD file.
 
 This module is ideal for quick and simple storage of data within an
-RRD file if you do not need to, nor want to bother defining custom
+RRD file if you do not need to, nor want to, bother defining custom
 RRA definitions.
 
 =head1 METHODS
@@ -988,12 +1127,13 @@ RRA definitions.
 
 The C<rrdtool> parameter is optional. It specifically defines where the
 C<rrdtool> binary can be found. If not specified, the module will search for
-the C<rrdtool> binary in your path, and an additional location relative 
-where the C<RRDs> module was loaded from.
+the C<rrdtool> binary in your path, an additional location relative where
+the C<RRDs> module was loaded from, and in /usr/local/rrdtool*.
 
-The C<rrdtool> binary is only used by the C<add_source> method, which could
-also be automatically called by the C<update> method if data point values for
-a previous undefined data source are provided for insertion.
+The C<rrdtool> binary is only used by the C<add_source> method, and only
+under certain circumstances. The C<add_source> method may also be called
+automatically by the C<update> method, if data point values for a previously
+undefined data source are provided for insertion.
 
 =head2 create
 
@@ -1058,10 +1198,6 @@ the file extension of .rrd).
          source_name => "TYPE"
      );
 
-B<NOTE>: This method will not currently work with rrdtool v1.2.x (RRD file
-version 003). It is known to work with v1.0.49 and others. This will be fixed
-in future versions of RRD::Simple. 
-
 C<$rrdfile> is optional and will default to C<$0.rrd>. (Script basename with
 the file extension of .rrd).
 
@@ -1078,6 +1214,8 @@ add missing data sources.
          destination => "/path/to/write/graph/images",
          basename => "graph_basename",
          sources => [ qw(source_name1 source_name2 source_name3) ],
+         source_colors => [ qw(ff0000 aa3333 000000) ],
+         source_labels => [ ("My Source 1","My Source Two","Source 3") ],
          line_thickness => 2,
          rrd_graph_option => "value",
          rrd_graph_option => "value",
@@ -1091,7 +1229,7 @@ Graph options specific to RRD::Simple are:
 
 =over 4
 
-=item "destination"
+=item destination
 
 The C<destination> parameter is optional, and it will default to the same
 path location as that of the RRD file specified by C<$rrdfile>. Specifying
@@ -1099,9 +1237,9 @@ this value will force the resulting graph images to be written to this path
 location. (The specified path must be a valid directory with the sufficient
 permissions to write the graph images).
 
-=item "basename"
+=item basename
 
-The C<basename> paramater is optional. This parameter specifies the basename
+The C<basename> parameter is optional. This parameter specifies the basename
 of the graph image files that will be created. If not specified, tt will
 default to the name of the RRD file. For exmaple, if you specify a basename
 name of C<mygraph>, the following graph image files will be created in the
@@ -1115,13 +1253,51 @@ C<destination> directory:
 The default file format is C<png>, but this can be explicitly specified using
 the standard RRDs options. (See below).
 
-=item "sources"
+=item sources
 
-The C<sources> paramater is optional. This parameter should be an array
+The C<sources> parameter is optional. This parameter should be an array
 of data source names that you want to be plotted. All data sources will be
 plotted by default.
 
-=item "line_thickness"
+=item source_colors
+
+ $rrd->graph($rrdfile,
+         source_colors => [ qw(ff3333 ff00ff ffcc99) ],
+     );
+ 
+ $rrd->graph($rrdfile,
+         source_colors => { source_name1 => "ff3333",
+                            source_name2 => "ff00ff",
+                            source_name3 => "ffcc99", },
+     );
+
+The C<source_colors> parameter is optional. This parameter should be an
+array or hash of hex triplet colors to be used for the plotted data source
+lines. A selection of vivid primary colors will be set by default.
+
+=item source_labels
+
+ $rrd->graph($rrdfile,
+         sources => [ qw(source_name1 source_name2 source_name3) ],
+         source_labels => [ ("My Source 1","My Source Two","Source 3") ],
+     );
+ 
+ $rrd->graph($rrdfile,
+         source_labels => { source_name1 => "My Source 1",
+                            source_name2 => "My Source Two",
+                            source_name3 => "Source 3", },
+     );
+
+The C<source_labels> parameter is optional. The parameter should be an
+array or hash of labels to be placed in the legend/key underneath the
+graph. An array can only be used if the C<sources> parameter is also
+specified, since the label index position in the array will directly
+relate to the data source index position in the C<sources> array.
+
+The data source names will be used in the legend/key by default if no
+C<source_labels> parameter is specified.
+
+=item line_thickness
 
 Specifies the thickness of the data lines drawn on the graphs. Valid values
 are 1, 2 and 3 (pixels).
@@ -1132,20 +1308,20 @@ Common RRD graph options are:
 
 =over 4
 
-=item "title"
+=item title
 
 A horizontal string at the top of the graph.
 
-=item "vertical-label"
+=item vertical_label
 
 A vertically placed string at the left hand side of the graph.
 
-=item "width"
+=item width
 
 The width of the canvas (the part of the graph with the actual data
 and such). This defaults to 400 pixels.
 
-=item "height"
+=item height
 
 The height of the canvas (the part of the graph with the actual data
 and such). This defaults to 100 pixels.
@@ -1156,6 +1332,16 @@ For examples on how to best use the C<graph> method, refer to the example
 scripts that are bundled with this module in the examples/ directory. A
 complete list of parameters can be found at
 L<http://people.ee.ethz.ch/~oetiker/webtools/rrdtool/doc/index.en.html>.
+
+=head2 retention_period
+
+ my $seconds = $rrd->retention_period($rrdfile);
+
+C<$rrdfile> is optional and will default to C<$0.rrd>. (Script basename with
+the file extension of .rrd).
+
+This method will return a maximum period of time (in seconds) that the RRD
+file will store data for.
 
 =head2 info
 
@@ -1174,7 +1360,7 @@ the RRD file, including RRA and data source information.
 Debug and trace information will be printed to STDERR if this variable
 if set to 1 (boolean true).
 
-This variable will take it's value from C<$ENV{DEBUG}>, if it exists,
+This variable will take its value from C<$ENV{DEBUG}>, if it exists,
 otherwise it will default to 0 (boolean false). This is a normal package
 variable and may be safely modified at any time.
 
@@ -1184,7 +1370,7 @@ This variable is used as the default data source type when creating or
 adding new data sources, when no other data source type is explicitly
 specified.
 
-This variable will take it's value from C<$ENV{DEFAULT_DSTYPE}>, if it
+This variable will take its value from C<$ENV{DEFAULT_DSTYPE}>, if it
 exists, otherwise it will default to C<GAUGE>. This is a normal package
 variable and may be safely modified at any time.
 
@@ -1212,10 +1398,6 @@ details.
 
 Finish POD.
 
-Fix the add_source() method to work with the latest versions of RRD.
-
-Write a fetch() method.
-
 =head1 SEE ALSO
 
 L<RRDTool::OO>, L<RRDs>,
@@ -1223,7 +1405,7 @@ L<http://www.rrdtool.org>, examples/*.pl
 
 =head1 VERSION
 
-$Id: Simple.pm,v 1.29 2006/01/06 14:37:45 nicolaw Exp $
+$Id: Simple.pm,v 1.30 2006/01/15 23:20:20 nicolaw Exp $
 
 =head1 AUTHOR
 

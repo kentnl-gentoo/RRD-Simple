@@ -7,5 +7,5 @@ It does howeve create RRD files with a sensible set of default RRA
 data source names to an existing RRD file.
 
 This module is ideal for quick and simple storage of data within an
-RRD file if you do not need to, nor want to bother defining custom
+RRD file if you do not need to, nor want to, bother defining custom
 RRA definitions.
