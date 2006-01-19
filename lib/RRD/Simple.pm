@@ -1,6 +1,6 @@
 ############################################################
 #
-#   $Id: Simple.pm,v 1.30 2006/01/15 23:20:20 nicolaw Exp $
+#   $Id: Simple.pm,v 1.31 2006/01/19 21:15:07 nicolaw Exp $
 #   RRD::Simple - Simple interface to create and store data in RRD files
 #
 #   Copyright 2005,2006 Nicola Worthington
@@ -32,11 +32,12 @@ use File::Basename qw(fileparse dirname basename);
 use vars qw($VERSION $DEBUG $DEFAULT_DSTYPE
 			 @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = sprintf('%d.%02d', q$Revision: 1.30 $ =~ /(\d+)/g);
+$VERSION = sprintf('%d.%02d', q$Revision: 1.31 $ =~ /(\d+)/g);
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
-@EXPORT_OK = qw(create update last_update graph info add_source sources);
+@EXPORT_OK = qw(create update last_update graph info
+				add_source sources retention_period);
 %EXPORT_TAGS = (all => \@EXPORT_OK);
 
 $DEBUG = $ENV{DEBUG} ? 1 : 0;
@@ -55,13 +56,16 @@ sub new {
 	croak 'Odd number of elements passed when even was expected' if @_ % 2;
 	my $self = { @_ };
 
-	my $validkeys = join('|',qw(rrdtool));
+	my $validkeys = join('|',qw(rrdtool cf));
 	cluck('Unrecognised parameters passed: '.
 		join(', ',grep(!/^$validkeys$/,keys %{$self})))
 		if (grep(!/^$validkeys$/,keys %{$self}) && $^W);
 
 	$self->{rrdtool} = _find_binary(exists $self->{rrdtool} ?
 						$self->{rrdtool} : 'rrdtool');
+
+	$self->{cf} ||= [ qw(AVERAGE MIN MAX LAST) ];
+	$self->{cf} = [ $self->{cf} ] if !ref($self->{cf});
 
 	bless($self,$class);
 	DUMP($class,$self);
@@ -72,8 +76,8 @@ sub new {
 # Create a new RRD file
 sub create {
 	my $self = shift;
-	unless(ref $self eq __PACKAGE__ || UNIVERSAL::isa($self, __PACKAGE__)) {
-		unshift @_, $self;
+	unless (ref $self && UNIVERSAL::isa($self, __PACKAGE__)) {
+		unshift @_, $self unless $self eq __PACKAGE__;
 		$self = new __PACKAGE__;
 	}
 
@@ -113,7 +117,7 @@ sub create {
 
 	# Add RRA definitions
 	my %cf;
-	for my $cf (qw(AVERAGE MIN MAX LAST)) {
+	for my $cf (@{$self->{cf}}) {
 		$cf{$cf} = $rrdDef->{rra};
 	}
 	for my $cf (sort keys %cf) {
@@ -137,8 +141,8 @@ sub create {
 # Update an RRD file with some data values
 sub update {
 	my $self = shift;
-	unless(ref $self eq __PACKAGE__ || UNIVERSAL::isa($self, __PACKAGE__)) {
-		unshift @_, $self;
+	unless (ref $self && UNIVERSAL::isa($self, __PACKAGE__)) {
+		unshift @_, $self unless $self eq __PACKAGE__;
 		$self = new __PACKAGE__;
 	}
 
@@ -176,6 +180,7 @@ sub update {
 		$ds =~ s/[^a-zA-Z0-9_]//g;
 		$ds = substr($ds,0,19);
 		$ds{$ds} = shift(@_);
+		$ds{$ds} = 'U' if !defined($ds{$ds});
 	}
 	DUMP('%ds',\%ds);
 
@@ -231,8 +236,8 @@ sub update {
 sub last_update { __PACKAGE__->last(@_); }
 sub last {
 	my $self = shift;
-	unless(ref $self eq __PACKAGE__ || UNIVERSAL::isa($self, __PACKAGE__)) {
-		unshift @_, $self;
+	unless (ref $self && UNIVERSAL::isa($self, __PACKAGE__)) {
+		unshift @_, $self unless $self eq __PACKAGE__;
 		$self = new __PACKAGE__;
 	}
 
@@ -250,8 +255,8 @@ sub last {
 # Get a list of data sources from an RRD file
 sub sources {
 	my $self = shift;
-	unless(ref $self eq __PACKAGE__ || UNIVERSAL::isa($self, __PACKAGE__)) {
-		unshift @_, $self;
+	unless (ref $self && UNIVERSAL::isa($self, __PACKAGE__)) {
+		unshift @_, $self unless $self eq __PACKAGE__;
 		$self = new __PACKAGE__;
 	}
 
@@ -276,8 +281,8 @@ sub sources {
 # Add a new data source to an RRD file
 sub add_source {
 	my $self = shift;
-	unless(ref $self eq __PACKAGE__ || UNIVERSAL::isa($self, __PACKAGE__)) {
-		unshift @_, $self;
+	unless (ref $self && UNIVERSAL::isa($self, __PACKAGE__)) {
+		unshift @_, $self unless $self eq __PACKAGE__;
 		$self = new __PACKAGE__;
 	}
 
@@ -306,9 +311,10 @@ sub add_source {
 		if -e $rrdfileBackup;
 
 	# Decide what heartbeat to use
-	my $heartbeat = (sort { $info->{ds}->{$b}->{minimal_heartbeat} <=>
-							$info->{ds}->{$b}->{minimal_heartbeat} }
-					keys %{$info->{ds}})[0];
+	my $heartbeat = $info->{ds}->{(sort {
+							$info->{ds}->{$b}->{minimal_heartbeat} <=>
+							$info->{ds}->{$b}->{minimal_heartbeat}
+					} keys %{$info->{ds}})[0]}->{minimal_heartbeat};
 	TRACE("\$heartbeat = $heartbeat");
 
 	# Make a list of expected sources after the addition
@@ -357,8 +363,8 @@ sub add_source {
 # Make a number of graphs for an RRD file
 sub graph {
 	my $self = shift;
-	unless(ref $self eq __PACKAGE__ || UNIVERSAL::isa($self, __PACKAGE__)) {
-		unshift @_, $self;
+	unless (ref $self && UNIVERSAL::isa($self, __PACKAGE__)) {
+		unshift @_, $self unless $self eq __PACKAGE__;
 		$self = new __PACKAGE__;
 	}
 
@@ -368,11 +374,30 @@ sub graph {
 	# How much data do we have to graph?
 	my $period = $self->retention_period($rrdfile);
 
+	# Check at RRA CFs are available and graph the best one
+	my $info = $self->info($rrdfile);
+	my $cf = 'AVERAGE';
+	for my $rra (@{$info->{rra}}) {
+		if ($rra->{cf} eq 'AVERAGE') {
+			$cf = 'AVERAGE'; last;
+		} elsif ($rra->{cf} eq 'MAX') {
+			$cf = 'MAX';
+		} elsif ($rra->{cf} eq 'MIN' && $cf ne 'MAX') {
+			$cf = 'MIN';
+		} elsif ($cf ne 'MAX' && $cf ne 'MIN') {
+			$cf = $rra->{cf};
+		}
+	}
+	TRACE("graph() - \$cf = $cf");
+
+	# Create graphs which we have enough data to populate
 	my @rtn;
 	for my $type (qw(day week month year 3years)) {
 		next if $period < _seconds_in($type);
-		push @rtn, [ ($self->_create_graph($rrdfile, $type, @_)) ];
+		TRACE("graph() - \$type = $type");
+		push @rtn, [ ($self->_create_graph($rrdfile, $type, $cf, @_)) ];
 	}
+
 	return @rtn;
 }
 
@@ -380,8 +405,8 @@ sub graph {
 # Fetch data point information from an RRD file
 sub fetch {
 	my $self = shift;
-	unless(ref $self eq __PACKAGE__ || UNIVERSAL::isa($self, __PACKAGE__)) {
-		unshift @_, $self;
+	unless (ref $self && UNIVERSAL::isa($self, __PACKAGE__)) {
+		unshift @_, $self unless $self eq __PACKAGE__;
 		$self = new __PACKAGE__;
 	}
 
@@ -394,8 +419,8 @@ sub fetch {
 # Fetch the last values inserted in to an RRD file
 sub last_values {
 	my $self = shift;
-	unless(ref $self eq __PACKAGE__ || UNIVERSAL::isa($self, __PACKAGE__)) {
-		unshift @_, $self;
+	unless (ref $self && UNIVERSAL::isa($self, __PACKAGE__)) {
+		unshift @_, $self unless $self eq __PACKAGE__;
 		$self = new __PACKAGE__;
 	}
 
@@ -432,12 +457,6 @@ sub last_values {
 		}
 	}
 
-#	This is a bad assumption in code - the above replacement searches
-#	for the last defined values
-#	my %rtn = (
-#			map { $_ => shift(@{$data->[0]}) } @{$ds}
-#		);
-
 	# Well, I'll be buggered if the LAST CF does what you'd think
 	# it's meant to do. If anybody can give me some decent documentation
 	# on what the LAST CF does, and/or how to get the last value put
@@ -451,8 +470,8 @@ sub last_values {
 # Return how long this RRD retains data for
 sub retention_period {
 	my $self = shift;
-	unless(ref $self eq __PACKAGE__ || UNIVERSAL::isa($self, __PACKAGE__)) {
-		unshift @_, $self;
+	unless (ref $self && UNIVERSAL::isa($self, __PACKAGE__)) {
+		unshift @_, $self unless $self eq __PACKAGE__;
 		$self = new __PACKAGE__;
 	}
 
@@ -472,8 +491,8 @@ sub retention_period {
 # Fetch information about an RRD file
 sub info {
 	my $self = shift;
-	unless(ref $self eq __PACKAGE__ || UNIVERSAL::isa($self, __PACKAGE__)) {
-		unshift @_, $self;
+	unless (ref $self && UNIVERSAL::isa($self, __PACKAGE__)) {
+		unshift @_, $self unless $self eq __PACKAGE__;
 		$self = new __PACKAGE__;
 	}
 
@@ -507,6 +526,7 @@ sub _create_graph {
 	my $self = shift;
 	my $rrdfile = shift;
 	my $type = _valid_scheme(shift) || 'day';
+	my $cf = shift || 'AVERAGE';
 
 	my %param;
 	while (my $k = shift) {
@@ -514,13 +534,11 @@ sub _create_graph {
 		$param{lc($k)} = shift;
 	}
 
-
 	# Specify some default values
 	$param{'end'} ||= time();
 	$param{'imgformat'} ||= 'PNG';
 	$param{'alt-autoscale'} ||= '';
 	$param{'alt-y-grid'} ||= '';
-
 
 	# Define what to call the image
 	my $basename = defined $param{'basename'} &&
@@ -537,13 +555,11 @@ sub _create_graph {
 	}
 	delete $param{'destination'};
 
-
 	# Define how thick the graph lines should be
 	my $line_thickness = defined $param{'line-thickness'} &&
 						$param{'line-thickness'} =~ /^[123]$/ ?
 						$param{'line-thickness'} : 1;
 	delete $param{'line-thickness'};
-
 
 	# Colours is an alias to colors
 	if (exists $param{'source-colours'} && !exists $param{'source-colors'}) {
@@ -559,12 +575,9 @@ sub _create_graph {
 			@source_colors = @{$param{'source-colors'}};
 		} elsif (ref($param{'source-colors'}) eq 'HASH') {
 			%source_colors = %{$param{'source-colors'}};
-	#	} elsif (!ref($param{'source-colors'})) {
-	#		@source_colors = [ ($param{'source-colors'}) ];
 		}
 	}
 	delete $param{'source-colors'};
-
 
 	# Define which data sources we should plot
 	my @ds = defined $param{'sources'} &&
@@ -591,29 +604,16 @@ sub _create_graph {
 	delete $param{'source-labels'};
 	delete $param{'sources'};
 
-
 	# Specify a default start time
 	$param{'start'} ||= time - _seconds_in($type,110);
 
 	# Suffix the title with the period information
 	$param{'title'} ||= basename($rrdfile);
-#
-# TODO - These X foo average source_labels need to be fixed so that they
-#        are correct and representative for RRD file lengths other
-#        than the 1 and 3 year RRD files
-#
 	$param{'title'} .= ' - [Daily Graph]'   if $type eq 'day';
 	$param{'title'} .= ' - [Weekly Graph]'  if $type eq 'week';
 	$param{'title'} .= ' - [Monthly Graph]' if $type eq 'month';
 	$param{'title'} .= ' - [Annual Graph]'  if $type eq 'year';
 	$param{'title'} .= ' - [3 Year Graph]'  if $type eq '3years';
-
-#	$param{'title'} .= ' - [Daily Graph: 5 min average]'    if $type eq 'day';
-#	$param{'title'} .= ' - [Weekly Graph: 30 min average]'  if $type eq 'week';
-#	$param{'title'} .= ' - [Monthly Graph: 2 hour average]' if $type eq 'month';
-#	$param{'title'} .= ' - [Annual Graph: 1 day average]'   if $type eq 'year';
-#	$param{'title'} .= ' - [3 Year Graph: 1 day average]'   if $type eq '3years';
-
 
 	# Convert our parameters in to an RRDs friendly defenition
 	my @def;
@@ -629,7 +629,6 @@ sub _create_graph {
 		}
 	}
 
-
 	# Populate a cycling tied scalar for line colors
 	@source_colors = qw(
 			FF0000 00FF00 0000FF FFFF00 00FFFF FF00FF 000000
@@ -641,7 +640,7 @@ sub _create_graph {
 	# Add the data sources to the graph
 	my @cmd = ($image,@def);
 	for my $ds (@ds) {
-		push @cmd, sprintf('DEF:%s=%s:%s:AVERAGE',$ds,$rrdfile,$ds);
+		push @cmd, sprintf('DEF:%s=%s:%s:%s',$ds,$rrdfile,$ds,$cf);
 		#push @cmd, sprintf('%s:%s#%s:%-22s',
 		push @cmd, sprintf('%s:%s#%s:%s',
 				"LINE$line_thickness",
@@ -1101,7 +1100,7 @@ RRD::Simple - Simple interface to create and store data in RRD files
  
  # And for the ultimately lazy, you could create and update
  # an RRD in one go using a one-liner like this:
- perl -MRRD::Simple -e'RRD::Simple->update(@ARGV)' myfile.rrd bytesIn 99999 
+ perl -MRRD::Simple=:all -e"update(@ARGV)" myfile.rrd bytesIn 99999 
 
 =head1 DESCRIPTION
 
@@ -1385,6 +1384,7 @@ the extra effort of using the OO interface:
  sources
  add_source
  graph
+ retention_period
  info
 
 The tag C<all> is available to easily export everything:
@@ -1394,10 +1394,6 @@ The tag C<all> is available to easily export everything:
 See the examples and unit tests in this distribution for more
 details.
 
-=head1 TODO
-
-Finish POD.
-
 =head1 SEE ALSO
 
 L<RRDTool::OO>, L<RRDs>,
@@ -1405,7 +1401,7 @@ L<http://www.rrdtool.org>, examples/*.pl
 
 =head1 VERSION
 
-$Id: Simple.pm,v 1.30 2006/01/15 23:20:20 nicolaw Exp $
+$Id: Simple.pm,v 1.31 2006/01/19 21:15:07 nicolaw Exp $
 
 =head1 AUTHOR
 

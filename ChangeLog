@@ -1,3 +1,58 @@
+2006-01-19  nicolaw
+
+	* lib/RRD/Simple.pm (1.31): Added retention_period() to exports and
+	  documented in the POD.  Bug fix whereby the add_source() method
+	  where $heartbeat was being set to a source name instead of the
+	  heartbeat integer value.  Made graph() method check that the CF RRA
+	  existed before trying to make a graph with that CF.  Added "cf"
+	  parameter to new() method to specify what CFs to use in making new
+	  RRD RRA's.  Changed the way that $self is self-instantiated when
+	  called as a function instead of a method, if it's passed a
+	  'RRD::Simple' string as the first option.
+
+2006-01-19  nicolaw
+
+	* Changes (1.15): Version 1.31 19th Jan
+
+2006-01-19  nicolaw
+
+	* MANIFEST (1.19): Adding t/13graphs.t
+
+2006-01-19  nicolaw
+
+	* t/13graphs.t (1.1): Adding
+
+2006-01-19  nicolaw
+
+	* t/05exported_function_interface.t (1.5): Fixed number of tests to
+	  run to 12
+
+2006-01-19  nicolaw
+
+	* MANIFEST (1.18): Adding t/12retention_periods.t
+
+2006-01-19  nicolaw
+
+	* t/12retention_periods.t (1.1): Adding
+
+2006-01-19  nicolaw
+
+	* t/05exported_function_interface.t (1.4): Added test for info and
+	  retention_period
+
+2006-01-16  nicolaw
+
+	* Changes (1.14): Added retention_period to exports
+
+2006-01-16  nicolaw
+
+	* Changes (1.13): Version 1.31 - pod unit tests fixed
+
+2006-01-16  nicolaw
+
+	* t/11pod_coverage.t (1.2): Fixed so it actually runs
+	  Test::Pod::Coverage instead of just Test::Pod
+
 2006-01-15  nicolaw
 
 	* lib/RRD/Simple.pm (1.30):

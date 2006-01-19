@@ -1,3 +1,36 @@
+Version 1.31 - 19th January 2006
+    + Fixed POD unit tests to run the right tests
+
+    + Added more unit tests.
+
+    + Added retention_period() to exports and documented
+      in the POD
+
+    + Bug fix whereby the add_source() wasn't finding
+      the best heartbeat (it was returning a source
+      name in some internal code instead of the correct
+      integer value).
+
+    + Added functionality for the graph() method to check
+      what RRA CFs are available before blindly graphing
+      the AVERAGE CF type. It will select best of the CFs
+      available, in order of preference, AVERAGE, MAX,
+      MIN, LAST.
+
+    + Added (undocumented) "cf" parameter inside the
+      new() method to specify which CFs to use when creating
+      RRAs in a new RRD file. This may be documented later
+      if it's considered useful, and if the paramrter
+      name is correct (ie, shouldn't be named something
+      else), or implemented in another way.
+
+    + Fixed a bug which (until this release) would not
+      and should not have been noticed since it only
+      effected the passing of default values to the
+      RRD::Simple $self object when used with indirect
+      method calls requiring the new "cf" paramater.
+
+
 Version 1.30 - 15th January 2006
     + Removed notice about add_source() not working with
       latest versions of RRD from the POD.

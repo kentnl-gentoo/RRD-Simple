@@ -25,4 +25,6 @@ t/08info.t
 t/09last_value.t
 t/10pod.t
 t/11pod_coverage.t
+t/12retention_periods.t
+t/13graphs.t
 TODO
