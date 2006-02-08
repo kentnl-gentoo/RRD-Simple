@@ -1,16 +1,17 @@
-ChangeLog
+Build.PL
 Changes
 examples/ApacheAccessLogActivity.pl
-examples/foo.pl
+examples/ColloquyBotLogParser.pl
+examples/data_gathering/remote_inetd.pl
+examples/graph.pl
 examples/graph2-daily-example.png
 examples/graph2.pl
-examples/graph.pl
 examples/linux_disk.pl
 INSTALL
 lib/RRD/Simple.pm
 LICENSE
 Makefile.PL
-MANIFEST
+MANIFEST			This list of files
 META.yml
 NOTICE
 README

@@ -1,16 +1,30 @@
-# http://module-build.sourceforge.net/META-spec.html
-#XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
-name:         RRD-Simple
-version:      1.31
-version_from: lib/RRD/Simple.pm
-installdirs:  site
+---
+name: RRD-Simple
+version: 1.32
+author:
+  - Nicola Worthington <nicolaw@cpan.org>
+abstract: Simple interface to create and store data in RRD files
+license: open_source
 requires:
-    Carp:                          0
-    File::Basename:                0
-    File::Copy:                    0
-    File::Spec:                    0
-    File::Temp:                    0
-    RRDs:                          0
-
-distribution_type: module
-generated_by: ExtUtils::MakeMaker version 6.17
+  Carp: 0
+  File::Basename: 0
+  File::Copy: 0
+  File::Spec: 0
+  File::Temp: 0
+  RRDs: 0
+build_requires:
+  Test: 0
+  Test::Deep: 0
+  Test::More: 0
+  Test::Pod: 0
+  Test::Pod::Coverage: 0
+conflicts:
+  RRDTool::Managed: 0
+provides:
+  RRD::Simple:
+    file: lib/RRD/Simple.pm
+    version: 1.32
+  RRD::Simple::_Colour:
+    file: lib/RRD/Simple.pm
+    version: 1.32
+generated_by: Module::Build version 0.2611
