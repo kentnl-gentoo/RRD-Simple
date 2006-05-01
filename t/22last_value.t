@@ -1,15 +1,17 @@
-my $rrdfile = -d 't' ? 't/09test.rrd' : '09test.rrd';
+# $Id: 22last_value.t 426 2006-05-01 17:13:15Z nicolaw $
+
+my $rrdfile = -d 't' ? 't/22test.rrd' : '22test.rrd';
 unlink $rrdfile if -f $rrdfile;
 
 use strict;
-use Test::More tests => 1448;
+use Test::More tests => 368;
 use lib qw(./lib ../lib);
 use RRD::Simple ();
 
 ok(my $rrd = RRD::Simple->new(cf => [ qw(AVERAGE LAST) ]),'new');
 
 my $end = time();
-my $start = $end - (60 * 60 * 24);
+my $start = $end - (60 * 60 * 6);
 
 ok($rrd->create($rrdfile,'day',
 		foo => 'GAUGE',

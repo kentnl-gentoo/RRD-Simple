@@ -1,3 +1,5 @@
+# $Id: 10pod.t 426 2006-05-01 17:13:15Z nicolaw $
+
 use Test::More;
 eval "use Test::Pod 1.00";
 plan skip_all => "Test::Pod 1.00 required for testing POD" if $@;

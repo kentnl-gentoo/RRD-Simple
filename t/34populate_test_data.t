@@ -1,4 +1,6 @@
-my $rrdfile = -d 't' ? 't/06test.rrd' : '06test.rrd';
+# $Id: 34populate_test_data.t 426 2006-05-01 17:13:15Z nicolaw $
+
+my $rrdfile = -d 't' ? 't/34test.rrd' : '34test.rrd';
 unlink $rrdfile if -f $rrdfile;
 
 use strict;

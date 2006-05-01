@@ -101,7 +101,7 @@ exit;
 ##############################################
 
 sub version {
-	print '$Id: ApacheAccessLogActivity.pl 127 2006-02-07 14:34:57Z nicolaw $'."\n";
+	print '$Id: ApacheAccessLogActivity.pl 423 2006-05-01 16:16:09Z nicolaw $'."\n";
 	exit;
 }
 

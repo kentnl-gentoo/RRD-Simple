@@ -1,4 +1,6 @@
-my $rrdfile = -d 't' ? 't/02lazy_example_test.rrd' : '02lazy_example_test.rrd';
+# $Id: 30assume_rrd_filename.t 426 2006-05-01 17:13:15Z nicolaw $
+
+my $rrdfile = -d 't' ? 't/30assume_rrd_filename.rrd' : '30assume_rrd_filename.rrd';
 unlink $rrdfile if -f $rrdfile;
 
 use strict;

@@ -1,32 +1,31 @@
+# $Id: 23graph.t 428 2006-05-01 18:47:34Z nicolaw $
+
 chdir('t') if -d 't';
-my $rrdfile = -d 't' ? 't/13test.rrd' : '13test.rrd';
+my $rrdfile = -d 't' ? 't/23test.rrd' : '23test.rrd';
 unlink $rrdfile if -f $rrdfile;
 
 use strict;
-use Test::More tests => 66;
+use Test::More tests => 66+245;
 use lib qw(./lib ../lib);
 use RRD::Simple ();
 
+use vars qw($rra %retention_periods %scheme_graphs @schemes);
+require 'answers.pl';
+
 ok(my $rrd = RRD::Simple->new(),'new');
 
-my %periods = (
-		'3years' => [ qw(daily weekly monthly annual 3years) ],
-		'year'   => [ qw(daily weekly monthly annual) ],
-		'month'  => [ qw(daily weekly monthly) ],
-		'week'   => [ qw(daily weekly) ],
-		'day'    => [ qw(daily) ],
-	);
-
-for my $p (keys %periods) {
+for my $p (keys %scheme_graphs) {
 	ok($rrd->create($rrdfile, $p,
 			bytesIn => 'GAUGE',
 			bytesOut => 'GAUGE',
 		),"$p create");
 
-	ok($rrd->update($rrdfile,
-			bytesIn => 100,
-			bytesOut => 100,
-		),"$p update");
+	for (my $t = 50; $t >= 1; $t--) {
+		ok($rrd->update($rrdfile,time-(110*$t),
+				bytesIn => 100,
+				bytesOut => 50,
+			),"$p update");
+	}
 
 	ok(join(',',sort $rrd->sources($rrdfile)) eq 'bytesIn,bytesOut',
 		"$p sources");
@@ -35,13 +34,14 @@ for my $p (keys %periods) {
 	ok($rrd->graph($rrdfile,
 			destination => './13graphs/',
 			basename => 'foo',
-			sources => [ qw(bytesOut) ],
+			sources => [ qw(bytesIn bytesOut) ],
 			source_labels => { bytesOut => 'Kbps Out' },
-			source_colors => [ qw(4499ff) ],
+			source_colors => [ qw(4499ff e33f00) ],
+			source_drawtypes => [ qw(AREA LINE) ],
 			line_thickness => 2,
 		),"$p graph");
 
-	for my $f (@{$periods{$p}}) {
+	for my $f (@{$scheme_graphs{$p}}) {
 		my $file = "./13graphs/foo-$f.png";
 		ok(-f $file,"create ./13graphs/foo-$f.png");
 		SKIP: {

@@ -1,4 +1,6 @@
-my $rrdfile = -d 't' ? 't/04lazy_create_by_update.rrd' : '04lazy_create_by_update.rrd';
+# $Id: 31create_assume_rrd_filename.t 426 2006-05-01 17:13:15Z nicolaw $
+
+my $rrdfile = -d 't' ? 't/31create_assume_rrd_filename.rrd' : '31create_assume_rrd_filename.rrd';
 unlink $rrdfile if -f $rrdfile;
 
 use strict;

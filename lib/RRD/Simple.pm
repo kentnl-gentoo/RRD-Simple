@@ -1,6 +1,6 @@
 ############################################################
 #
-#   $Id: Simple.pm 146 2006-02-08 14:43:20Z nicolaw $
+#   $Id: Simple.pm 429 2006-05-01 21:10:56Z nicolaw $
 #   RRD::Simple - Simple interface to create and store data in RRD files
 #
 #   Copyright 2005,2006 Nicola Worthington
@@ -32,7 +32,7 @@ use File::Basename qw(fileparse dirname basename);
 use vars qw($VERSION $DEBUG $DEFAULT_DSTYPE
 			 @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '1.32' || sprintf('%d.%02d', q$Revision: 146 $ =~ /(\d+)/g);
+$VERSION = '1.33' || sprintf('%d.%02d', q$Revision: 429 $ =~ /(\d+)/g);
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -93,7 +93,10 @@ sub create {
 	TRACE("Using filename: $rrdfile");
 
 	# We've been given a scheme specifier
-	my $scheme = 'year';
+	# Until v1.32 'year' was the default. As of v1.33 'mrtg'
+	# is the new default scheme.
+	#my $scheme = 'year';
+	my $scheme = 'mrtg';
 	if (@_ % 2 && _valid_scheme($_[0])) {
 		$scheme = _valid_scheme($_[0]);
 		shift @_;
@@ -614,6 +617,40 @@ sub _create_graph {
 		}
 	}
 	delete $param{'source-labels'};
+
+	# Allow source legend source_drawtypes to be set
+	#   ... "oops" ... yes, this is quite obviously
+	#   copy and paste code from the chunk above. I'm
+	#   sorry. I'll rationalise it some other day if
+	#   it's necessary.
+	my %source_drawtypes = ();
+	if (defined $param{'source-drawtypes'}) {
+		if (ref($param{'source-drawtypes'}) eq 'HASH') {
+			%source_drawtypes = %{$param{'source-drawtypes'}};
+		} elsif (ref($param{'source-drawtypes'}) eq 'ARRAY') {
+			unless (defined $param{'sources'} &&
+					ref($param{'sources'}) eq 'ARRAY') {
+				carp "source_drawtypes may only be an array if sources is ".
+					"also an specified and valid array" if $^W;
+			} else {
+				for (my $i = 0; $i < @{$param{'source-drawtypes'}}; $i++) {
+					$source_drawtypes{$ds[$i]} = $param{'source-drawtypes'}->[$i];
+				}
+			}
+		}
+
+		# Validate the values we have and set default thickness
+		while (my ($k,$v) = each %source_drawtypes) {
+			if ($v !~ /^(LINE[1-9]?|AREA)$/) {
+				delete $source_drawtypes{$k};
+				carp "source_drawtypes may be LINE, LINEn or AREA only; ".
+					"value '$v' is not valid" if $^W;
+			}
+			$source_drawtypes{$k} = uc($v);
+			$source_drawtypes{$k} .= $line_thickness if $v eq 'LINE';
+		}
+	}
+	delete $param{'source-drawtypes'};
 	delete $param{'sources'};
 
 	# Specify a default start time
@@ -655,7 +692,8 @@ sub _create_graph {
 		push @cmd, sprintf('DEF:%s=%s:%s:%s',$ds,$rrdfile,$ds,$cf);
 		#push @cmd, sprintf('%s:%s#%s:%-22s',
 		push @cmd, sprintf('%s:%s#%s:%s',
-				"LINE$line_thickness",
+				#"LINE$line_thickness",
+				(defined $source_drawtypes{$ds} ? $source_drawtypes{$ds} : "LINE$line_thickness"),
 				$ds,
 				(defined $source_colors{$ds} ? $source_colors{$ds} : $colour),
 				(defined $source_labels{$ds} ? $source_labels{$ds} : $ds),
@@ -1227,6 +1265,7 @@ add missing data sources.
          sources => [ qw(source_name1 source_name2 source_name3) ],
          source_colors => [ qw(ff0000 aa3333 000000) ],
          source_labels => [ ("My Source 1","My Source Two","Source 3") ],
+         source_drawtypes => [ qw(LINE1 AREA LINE) ],
          line_thickness => 2,
          rrd_graph_option => "value",
          rrd_graph_option => "value",
@@ -1308,10 +1347,30 @@ relate to the data source index position in the C<sources> array.
 The data source names will be used in the legend/key by default if no
 C<source_labels> parameter is specified.
 
+=item source_drawtypes
+
+ $rrd->graph($rrdfile,
+         source_drawtypes => [ qw(LINE1 AREA LINE) ],
+     );
+ 
+ $rrd->graph($rrdfile,
+         source_colors => { source_name1 => "LINE1",
+                            source_name2 => "AREA",
+                            source_name3 => "LINE", },
+     );
+
+The C<source_drawtypes> parameter is optional. This parameter should be an
+array or hash of drawing/plotting types to be used for the plotted data source
+lines. By default all data sources are drawn as lines (LINE), but data sources
+may also be drawn as filled areas (AREA). Valid values are, LINE, LINEI<n>
+(where I<n> represents the thickness of the line in pixels), or AREA.
+
 =item line_thickness
 
-Specifies the thickness of the data lines drawn on the graphs. Valid values
-are 1, 2 and 3 (pixels).
+Specifies the thickness of the data lines drawn on the graphs for
+any data sources that have not had a specific line thinkness already
+specified using the C<source_drawtypes> option.
+Valid values are 1, 2 and 3 (pixels).
 
 =back
 
@@ -1413,7 +1472,7 @@ L<http://www.rrdtool.org>, examples/*.pl
 
 =head1 VERSION
 
-$Id: Simple.pm 146 2006-02-08 14:43:20Z nicolaw $
+$Id: Simple.pm 429 2006-05-01 21:10:56Z nicolaw $
 
 =head1 AUTHOR
 
