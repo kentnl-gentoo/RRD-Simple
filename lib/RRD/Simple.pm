@@ -1,6 +1,6 @@
 ############################################################
 #
-#   $Id: Simple.pm 429 2006-05-01 21:10:56Z nicolaw $
+#   $Id: Simple.pm 564 2006-06-01 14:16:15Z nicolaw $
 #   RRD::Simple - Simple interface to create and store data in RRD files
 #
 #   Copyright 2005,2006 Nicola Worthington
@@ -32,7 +32,7 @@ use File::Basename qw(fileparse dirname basename);
 use vars qw($VERSION $DEBUG $DEFAULT_DSTYPE
 			 @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '1.33' || sprintf('%d.%02d', q$Revision: 429 $ =~ /(\d+)/g);
+$VERSION = '1.34' || sprintf('%d', q$Revision: 564 $ =~ /(\d+)/g);
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -557,7 +557,7 @@ sub _create_graph {
 
 	# Define what to call the image
 	my $basename = defined $param{'basename'} &&
-						$param{'basename'} =~ /^\w+$/i ?
+						$param{'basename'} =~ /^[0-9a-z_\.-]+$/i ?
 						$param{'basename'} :
 						(fileparse($rrdfile,'\.[^\.]+'))[0];
 	delete $param{'basename'};
@@ -1472,7 +1472,7 @@ L<http://www.rrdtool.org>, examples/*.pl
 
 =head1 VERSION
 
-$Id: Simple.pm 429 2006-05-01 21:10:56Z nicolaw $
+$Id: Simple.pm 564 2006-06-01 14:16:15Z nicolaw $
 
 =head1 AUTHOR
 

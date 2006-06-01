@@ -341,7 +341,7 @@ SEE ALSO
     RRDTool::OO, RRDs, <http://www.rrdtool.org>, examples/*.pl
 
 VERSION
-    $Id: Simple.pm 429 2006-05-01 21:10:56Z nicolaw $
+    $Id: Simple.pm 564 2006-06-01 14:16:15Z nicolaw $
 
 AUTHOR
     Nicola Worthington <nicolaw@cpan.org>
