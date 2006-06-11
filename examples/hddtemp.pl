@@ -1,8 +1,8 @@
-#!/usr/bin/perl -w
+#!/usr/bin/perl
 ############################################################
 #
-#   $Id: graph.pl 578 2006-06-08 11:47:52Z nicolaw $
-#   graph.pl - Example script bundled as part of RRD::Simple
+#   $Id: hddtemp.pl 595 2006-06-11 11:25:19Z nicolaw $
+#   iostat.pl - Example script bundled as part of RRD::Simple
 #
 #   Copyright 2005,2006 Nicola Worthington
 #
@@ -21,17 +21,30 @@
 ############################################################
 
 use strict;
-use RRD::Simple;
-use Data::Dumper;
+use RRD::Simple 1.35;
 
-my $rrdfile = '/home/system/colloquy/botbot/logs/botbot.rrd';
-my $destdir = '/home/nicolaw/webroot/www/www.neechi.co.uk';
+BEGIN {
+	warn "This may only run on Linux 2.4 or higher kernel systems"
+		unless `uname -s` =~ /Linux/i && `uname -r` =~ /^2\.[4-9]\./;
+}
 
-my @rtn = RRD::Simple->graph($rrdfile,
-		destination => $destdir,
-		'vertical-label' => 'Messages',
-		'title' => 'Talker Activity',
-	);
+use constant HDDTEMP => '/usr/sbin/hddtemp -q /dev/hd? /dev/sd?';
 
-print Dumper(\@rtn);
+my %update = ();
+open(PH,'-|',HDDTEMP) || die $!;
+while (local $_ = <PH>) {
+	if (my ($dev,$temp) = $_ =~ m,^/dev/([a-z]+):\s+.+?:\s+(\d+)..?C,) {
+		$update{$dev} = $temp;
+	}
+}
+close(PH) || warn $!;
+
+my $rrd = new RRD::Simple;
+$rrd->update(%update);
+$rrd->graph(
+	vertical_label => 'Celsius',
+	line_thickness => 2,
+	sources => [ sort $rrd->sources ],
+	extended_legend => 1,
+);
 

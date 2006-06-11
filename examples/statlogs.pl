@@ -1,10 +1,10 @@
 #!/usr/bin/perl -w
-############################################################
+###########################################################
 #
-#   $Id: graph.pl 578 2006-06-08 11:47:52Z nicolaw $
-#   graph.pl - Example script bundled as part of RRD::Simple
+#   $Id: statlogs.pl 593 2006-06-10 21:16:08Z nicolaw $
+#   statlogs.pl - Example script bundled as part of RRD::Simple
 #
-#   Copyright 2005,2006 Nicola Worthington
+#   Copyright 2006 Nicola Worthington
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -20,18 +20,12 @@
 #
 ############################################################
 
-use strict;
-use RRD::Simple;
-use Data::Dumper;
+use CGI qw(header);
+print header(-content_type => 'text/html');
 
-my $rrdfile = '/home/system/colloquy/botbot/logs/botbot.rrd';
-my $destdir = '/home/nicolaw/webroot/www/www.neechi.co.uk';
-
-my @rtn = RRD::Simple->graph($rrdfile,
-		destination => $destdir,
-		'vertical-label' => 'Messages',
-		'title' => 'Talker Activity',
-	);
-
-print Dumper(\@rtn);
+if (opendir(DH,'/var/logs/httpd')) {
+	for (sort grep(/(combined|access|error)/,readdir(DH))) {
+		printf("%s %s %s <br>\n", $_, (stat("/var/logs/httpd/$_"))[7,9]);
+	}
+}
 

@@ -1,7 +1,28 @@
-#!/bin/env perl
+#!/usr/bin/perl -w
+############################################################
+#
+#   $Id: graph2.pl 587 2006-06-10 20:51:43Z nicolaw $
+#   graph2.pl - Example script bundled as part of RRD::Simple
+#
+#   Copyright 2005,2006 Nicola Worthington
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+############################################################
 
 use strict;
-use RRD::Simple ();
+use lib qw(../lib/ ./lib/);
+use RRD::Simple 1.35;
 
 my $rrdfile = 'graph2.rrd';
 my $end = time();
@@ -30,9 +51,10 @@ unless (-f $rrdfile) {
 
 # Graph the data
 $rrd->graph($rrdfile,
-		title => 'Random Graph of Some People',
+		'title' => 'Random Graph of Some People',
 		'vertical-label' => 'Weirdness',
-		'line-thickness' => 2
+		'line-thickness' => 2,
+		'extended-legend' => 1,
 	);
 
 

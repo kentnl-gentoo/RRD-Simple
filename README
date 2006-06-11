@@ -161,6 +161,7 @@ METHODS
              source_labels => [ ("My Source 1","My Source Two","Source 3") ],
              source_drawtypes => [ qw(LINE1 AREA LINE) ],
              line_thickness => 2,
+             extended_legend => 1,
              rrd_graph_option => "value",
              rrd_graph_option => "value",
              rrd_graph_option => "value"
@@ -261,6 +262,11 @@ METHODS
         specified using the "source_drawtypes" option. Valid values are 1, 2
         and 3 (pixels).
 
+    extended_legend
+        Prints more detailed information in the graph legend by adding the
+        minimum, maximum and last values recorded on the graph for each data
+        source.
+
     Common RRD graph options are:
 
     title
@@ -341,7 +347,7 @@ SEE ALSO
     RRDTool::OO, RRDs, <http://www.rrdtool.org>, examples/*.pl
 
 VERSION
-    $Id: Simple.pm 564 2006-06-01 14:16:15Z nicolaw $
+    $Id: Simple.pm 594 2006-06-11 09:23:08Z nicolaw $
 
 AUTHOR
     Nicola Worthington <nicolaw@cpan.org>
