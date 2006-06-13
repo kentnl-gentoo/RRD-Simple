@@ -1,12 +1,19 @@
-# $Id: 22last_value.t 426 2006-05-01 17:13:15Z nicolaw $
+# $Id: 22last_value.t 610 2006-06-13 16:51:43Z nicolaw $
 
 my $rrdfile = -d 't' ? 't/22test.rrd' : '22test.rrd';
 unlink $rrdfile if -f $rrdfile;
 
 use strict;
-use Test::More tests => 368;
+
+BEGIN {
+	use Test::More;
+	eval "use RRDs";
+	plan skip_all => "RRDs.pm *MUST* be installed!" if $@;
+	plan tests => 368 if !$@;
+}
+
 use lib qw(./lib ../lib);
-use RRD::Simple ();
+use RRD::Simple 1.35 ();
 
 ok(my $rrd = RRD::Simple->new(cf => [ qw(AVERAGE LAST) ]),'new');
 

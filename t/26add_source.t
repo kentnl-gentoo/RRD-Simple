@@ -1,12 +1,25 @@
-# $Id: 26add_source.t 426 2006-05-01 17:13:15Z nicolaw $
+# $Id: 26add_source.t 602 2006-06-13 11:54:15Z nicolaw $
 
 my $rrdfile = -d 't' ? 't/26add_source.rrd' : '26add_source.rrd';
 unlink $rrdfile if -f $rrdfile;
 
 use strict;
-use Test::More tests => 6;
+
+BEGIN {
+	use Test::More;
+	my $okay = 1;
+	for (qw(RRDs File::Temp File::Copy)) {
+		eval "use $_";
+		if ($@) {
+			plan skip_all => "$_ *MUST* be installed!";
+			$okay = 0;
+		}
+	}
+	plan tests => 6 if $okay;
+}
+
 use lib qw(./lib ../lib);
-use RRD::Simple ();
+use RRD::Simple 1.35 ();
 
 ok(my $rrd = RRD::Simple->new(),'new');
 

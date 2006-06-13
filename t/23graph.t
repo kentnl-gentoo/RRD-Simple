@@ -1,13 +1,20 @@
-# $Id: 23graph.t 428 2006-05-01 18:47:34Z nicolaw $
+# $Id: 23graph.t 610 2006-06-13 16:51:43Z nicolaw $
 
 chdir('t') if -d 't';
 my $rrdfile = -d 't' ? 't/23test.rrd' : '23test.rrd';
 unlink $rrdfile if -f $rrdfile;
 
 use strict;
-use Test::More tests => 66+245;
+
+BEGIN {
+	use Test::More;
+	eval "use RRDs";
+	plan skip_all => "RRDs.pm *MUST* be installed!" if $@;
+	plan tests => 311 if !$@;
+}
+
 use lib qw(./lib ../lib);
-use RRD::Simple ();
+use RRD::Simple 1.35 ();
 
 use vars qw($rra %retention_periods %scheme_graphs @schemes);
 require 'answers.pl';

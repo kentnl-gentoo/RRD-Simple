@@ -1,13 +1,20 @@
-# $Id: 32exported_function_interface.t 426 2006-05-01 17:13:15Z nicolaw $
+# $Id: 32exported_function_interface.t 610 2006-06-13 16:51:43Z nicolaw $
 
 chdir('t') if -d 't';
 my $rrdfile = -d 't' ? 't/32test.rrd' : '32test.rrd';
 unlink $rrdfile if -f $rrdfile;
 
 use strict;
-use Test::More tests => 12;
+
+BEGIN {
+	use Test::More;
+	eval "use RRDs";
+	plan skip_all => "RRDs.pm *MUST* be installed!" if $@;
+	plan tests => 12 if !$@;
+}
+
 use lib qw(./lib ../lib);
-use RRD::Simple qw(:all);
+use RRD::Simple 1.35 qw(:all);
 
 use vars qw($rra %retention_periods %scheme_graphs @schemes);
 require 'answers.pl';

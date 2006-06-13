@@ -1,9 +1,15 @@
-# $Id: 20compile.t 426 2006-05-01 17:13:15Z nicolaw $
+# $Id: 20compile.t 610 2006-06-13 16:51:43Z nicolaw $
 
 chdir('t') if -d 't';
-use lib qw(./lib ../lib);
-use Test::More tests => 2;
 
+BEGIN {
+	use Test::More;
+	eval "use RRDs";
+	plan skip_all => "RRDs.pm *MUST* be installed!" if $@;
+	plan tests => 2 if !$@;
+}
+
+use lib qw(./lib ../lib);
 use_ok('RRD::Simple');
 require_ok('RRD::Simple');
 

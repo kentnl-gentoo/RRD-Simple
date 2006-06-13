@@ -15,6 +15,7 @@ examples/hddtemp.pl
 examples/iostat-hda-daily.png
 examples/iostat.pl
 examples/mod_perl.pl
+examples/README
 examples/statlogs.pl
 examples/vmstat.pl
 INSTALL

@@ -1,6 +1,6 @@
 ############################################################
 #
-#   $Id: Simple.pm 594 2006-06-11 09:23:08Z nicolaw $
+#   $Id: Simple.pm 608 2006-06-13 16:41:24Z nicolaw $
 #   RRD::Simple - Simple interface to create and store data in RRD files
 #
 #   Copyright 2005,2006 Nicola Worthington
@@ -32,7 +32,7 @@ use File::Basename qw(fileparse dirname basename);
 use vars qw($VERSION $DEBUG $DEFAULT_DSTYPE
 			 @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '1.35' || sprintf('%d', q$Revision: 594 $ =~ /(\d+)/g);
+$VERSION = '1.36' || sprintf('%d', q$Revision: 608 $ =~ /(\d+)/g);
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -1513,7 +1513,7 @@ L<http://www.rrdtool.org>, examples/*.pl
 
 =head1 VERSION
 
-$Id: Simple.pm 594 2006-06-11 09:23:08Z nicolaw $
+$Id: Simple.pm 608 2006-06-13 16:41:24Z nicolaw $
 
 =head1 AUTHOR
 

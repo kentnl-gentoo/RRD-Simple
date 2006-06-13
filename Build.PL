@@ -1,9 +1,25 @@
 # vim:ts=4:sw=4:tw=78
-# $Id: Build.PL 149 2006-02-08 14:52:12Z nicolaw $
+# $Id: Build.PL 611 2006-06-13 16:52:29Z nicolaw $
 
 use strict;
 use Module::Build;
 use vars qw($build);
+
+BEGIN {
+	eval "use RRDs";
+	if ($@) {
+		warn qq{
++-----------------------------------------------------------------------------+
+| ERROR! -- Could not load RRDs.pm                                            |
+|                                                                             |
+| RRD::Simple requires RRDs.pm (a part of RRDtool) in order to function. You  |
+| can download a copy of RRDtool from http://www.rrdtool.org. See the INSTALL |
+| document for more details.                                                  |
++-----------------------------------------------------------------------------+
+
+} unless $ENV{AUTOMATED_TESTING};
+	}
+}
 
 $build = Module::Build->new(
 		module_name        => 'RRD::Simple',
@@ -25,10 +41,12 @@ $build = Module::Build->new(
 		build_requires => {
 			'Test'                => 0, # 1.25
 			'Test::More'          => 0, # 0.60
-			'Test::Pod'           => 0, # 1.20
-			'Test::Pod::Coverage' => 0, # 1.06
-#			'Test::Distribution'  => 0, # 1.23
-			'Test::Deep'          => 0, # 0.093
+		},
+
+		recommends => {
+			'Test::Pod'           => 1.20,
+			'Test::Pod::Coverage' => 1.06,
+			'Test::Deep'          => 0.093,
 		},
 
 		conflicts => {
@@ -36,9 +54,9 @@ $build = Module::Build->new(
 		},
 
 		add_to_cleanup => [ qw(
-			t/01test.rrd t/02lazy_example_test.rrd t/03add_source.rrd
-			t/04lazy_create_by_update.rrd t/05test.rrd t/06test.rrd
-			t/07test.rrd t/08test.rrd t/09test.rrd t/12test.rrd t/13test.rrd
+			t/21test.rrd t/22test.rrd t/23test.rrd t/24test.rrd t/25test.rrd
+			t/26add_source.rrd t/30assume_rrd_filename.rrd t/34test.rrd
+			t/31create_assume_rrd_filename.rrd t/32test.rrd t/33test.rrd
 		) ],
 	);
 
@@ -56,7 +74,7 @@ if ($url) {
 		local $SIG{ALRM} = sub { die; };
 		alarm 10;
 		my $ua = LWP::UserAgent->new(
-				agent => 'Build.PL $Revision: 149 $',
+				agent => 'Build.PL $Revision: 611 $',
 				timeout => 9,
 				max_size => 500,
 			);

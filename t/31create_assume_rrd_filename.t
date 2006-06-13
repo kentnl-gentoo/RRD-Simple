@@ -1,12 +1,19 @@
-# $Id: 31create_assume_rrd_filename.t 426 2006-05-01 17:13:15Z nicolaw $
+# $Id: 31create_assume_rrd_filename.t 610 2006-06-13 16:51:43Z nicolaw $
 
 my $rrdfile = -d 't' ? 't/31create_assume_rrd_filename.rrd' : '31create_assume_rrd_filename.rrd';
 unlink $rrdfile if -f $rrdfile;
 
 use strict;
-use Test::More tests => 6;
+
+BEGIN {
+	use Test::More;
+	eval "use RRDs";
+	plan skip_all => "RRDs.pm *MUST* be installed!" if $@;
+	plan tests => 6 if !$@;
+}
+
 use lib qw(./lib ../lib);
-use RRD::Simple ();
+use RRD::Simple 1.35 ();
 
 my $created = time();
 
