@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: meminfo.pl 618 2006-06-13 21:46:48Z nicolaw $
+#   $Id: meminfo.pl 639 2006-06-15 21:58:59Z nicolaw $
 #   meminfo.pl - Example script bundled as part of RRD::Simple
 #
 #   Copyright 2006 Nicola Worthington
@@ -28,20 +28,23 @@ my $rrd = new RRD::Simple;
 my $rrdfile = 'meminfo.rrd';
 my %memory = ();
 
-eval "use Sys::MemInfo qw(totalmem freemem)";
-unless ($@) {
-	@memory{qw(total free)} = (totalmem(),freemem());
-} else {
-	die "Please install Sys::MemInfo so that I can get memory information.\n"
-		unless -f '/proc/meminfo' && -r '/proc/meminfo';
+if (-f '/proc/meminfo') {
 	open(FH,'<','/proc/meminfo') || die "Unable to open '/proc/meminfo': $!";
 	while (local $_ = <FH>) {
 		if (my ($key,$value,$kb) = $_ =~ /^(\w+):\s+(\d+)\s*(kB)\s*$/i) {
+			next unless $key =~ /(memtotal|memfree|buffers|cached|swapfree|swaptotal)/i;
 			$value *= 1024 if defined $kb;
 			$memory{$key} = $value;
 		}
 	}
 	close(FH) || warn "Unable to close '/proc/meminfo': $!";
+	$memory{SwapUsed} = $memory{SwapTotal} - $memory{SwapFree}
+		if exists $memory{SwapTotal} && exists $memory{SwapFree};
+
+} else {
+	eval "use Sys::MemInfo qw(totalmem freemem)";
+	die "Please install Sys::MemInfo so that I can get memory information.\n" if $@;
+	@memory{qw(total free)} = (totalmem(),freemem());
 }
 
 $rrd->create($rrdfile,
@@ -55,7 +58,16 @@ $rrd->graph($rrdfile,
 		title => 'Memory Usage',
 		line_thickness => 2,
 		vertical_label => 'bytes',
-		sources => [ grep(/^(mem)?(total|free|buffers|cached|swap)$/i, keys %memory) ],
+		sources => [ grep(/^(memtotal|memfree|buffers|cached)$/i, keys %memory) ],
 	);
+
+$rrd->graph($rrdfile,
+		basename => 'swap',
+		base => 1024,
+		title => 'Swap Usage',
+		vertical_label => 'bytes',
+		sources => [ qw(SwapTotal SwapUsed) ],
+		source_drawtypes => [ qw(LINE2 AREA) ],
+	) if grep(/^SwapUsed$/, $rrd->sources($rrdfile));
 
 

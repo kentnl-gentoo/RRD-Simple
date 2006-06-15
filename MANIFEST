@@ -14,6 +14,7 @@ examples/hddtemp-daily.png
 examples/hddtemp.pl
 examples/iostat-hda-daily.png
 examples/iostat.pl
+examples/loadavg.pl
 examples/meminfo-daily.png
 examples/meminfo.pl
 examples/mod_perl.pl

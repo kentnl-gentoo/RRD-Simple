@@ -1,6 +1,6 @@
 ############################################################
 #
-#   $Id: Simple.pm 625 2006-06-15 17:11:19Z nicolaw $
+#   $Id: Simple.pm 642 2006-06-15 22:23:39Z nicolaw $
 #   RRD::Simple - Simple interface to create and store data in RRD files
 #
 #   Copyright 2005,2006 Nicola Worthington
@@ -32,7 +32,7 @@ use File::Basename qw(fileparse dirname basename);
 use vars qw($VERSION $DEBUG $DEFAULT_DSTYPE
 			 @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '1.37' || sprintf('%d', q$Revision: 625 $ =~ /(\d+)/g);
+$VERSION = '1.38' || sprintf('%d', q$Revision: 642 $ =~ /(\d+)/g);
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -906,7 +906,6 @@ sub _add_source {
 	# Create a marker hash ref to store temporary state
 	my $marker = {
 				addedNewDS => 0,
-				insertCDP_PREP => 0,
 				parse => 0,
 				version => 1,
 			};
@@ -936,7 +935,7 @@ EndDS
 		}
 
 		# Insert DS under CDP_PREP entity
-		if ($marker->{insertCDP_PREP} == 1) {
+		if (/<\/cdp_prep>/) {
 			# Version 0003 RRD from rrdtool 1.2x
 			if ($marker->{version} >= 3) {
 				print OUT "			<ds>\n";
@@ -950,15 +949,10 @@ EndDS
 			} else { 
 				print OUT "			<ds><value> NaN </value>  <unknown_datapoints> 0 </unknown_datapoints></ds>\n";
 			}
-			$marker->{insertCDP_PREP} = 0;
 		}
 
-		# Look for start of the <cdp_prep> entity
-		if (/<cdp_prep>/) {
-			$marker->{insertCDP_PREP} = 1;
-
 		# Look for the end of an RRA
-		} elsif (/<\/database>/) {
+		if (/<\/database>/) {
 			$marker->{parse} = 0;
 
 		# Find the dumped RRD version (must take from the XML, not the RRD)
@@ -968,7 +962,7 @@ EndDS
 
 		# Add the extra "<v> NaN </v>" under the RRAs. Just print normal lines
 		if ($marker->{parse} == 1) {
-			if ($_ =~ /^(.+ <row>)(.+)/) {
+			if ($_ =~ /^(.+ <row>.+)(<\/row>.*)/) {
 				print OUT $1;
 				print OUT "<v> NaN </v>";
 				print OUT $2;
@@ -1530,7 +1524,7 @@ L<http://www.rrdtool.org>, examples/*.pl
 
 =head1 VERSION
 
-$Id: Simple.pm 625 2006-06-15 17:11:19Z nicolaw $
+$Id: Simple.pm 642 2006-06-15 22:23:39Z nicolaw $
 
 =head1 AUTHOR
 
