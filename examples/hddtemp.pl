@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 ############################################################
 #
-#   $Id: hddtemp.pl 595 2006-06-11 11:25:19Z nicolaw $
+#   $Id: hddtemp.pl 613 2006-06-13 21:22:48Z nicolaw $
 #   iostat.pl - Example script bundled as part of RRD::Simple
 #
 #   Copyright 2005,2006 Nicola Worthington

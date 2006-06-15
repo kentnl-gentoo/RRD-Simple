@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: vmstat.pl 582 2006-06-10 18:17:26Z nicolaw $
+#   $Id: vmstat.pl 628 2006-06-15 17:25:19Z nicolaw $
 #   vmstat.pl - Example script bundled as part of RRD::Simple
 #
 #   Copyright 2005,2006 Nicola Worthington
@@ -21,15 +21,14 @@
 ############################################################
 
 use strict;
-use RRD::Simple 1.35;
-use RRDs;
+use RRD::Simple 1.37;
 
 BEGIN {
 	warn "This may only run on Linux 2.6 kernel systems"
 		unless `uname -s` =~ /Linux/i && `uname -r` =~ /^2\.6\./;
 }
 
-my $cmd = '/usr/bin/vmstat 1 2';
+my $cmd = '/usr/bin/vmstat 2 3';
 my $rrd = new RRD::Simple;
 
 my @keys = ();
@@ -53,9 +52,15 @@ $rrd->create($rrdfile, map { ($_ => 'GAUGE') } @cpukeys )
 
 $rrd->update($rrdfile, map {( $_ => $update{$_} )} @cpukeys );
 $rrd->graph($rrdfile,
-		line_thickness => 2,
+		sources => [ qw(sy us wa id) ],
+		source_drawtypes => [ qw(AREA STACK STACK STACK) ],
+		source_colors => [ qw(ff0000 00ff00 0000ff ffffff) ],
 		vertical_label => '% percent',
-		source_labels => \%labels
+		source_labels => \%labels,
+		extended_legend => 1,
+		upper_limit => 100,
+		lower_limit => 0,
+		rigid => "",
 	);
 
 

@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: graph2.pl 587 2006-06-10 20:51:43Z nicolaw $
+#   $Id: graph2.pl 613 2006-06-13 21:22:48Z nicolaw $
 #   graph2.pl - Example script bundled as part of RRD::Simple
 #
 #   Copyright 2005,2006 Nicola Worthington

@@ -14,9 +14,14 @@ examples/hddtemp-daily.png
 examples/hddtemp.pl
 examples/iostat-hda-daily.png
 examples/iostat.pl
+examples/meminfo-daily.png
+examples/meminfo.pl
 examples/mod_perl.pl
+examples/network.pl
+examples/processes.pl
 examples/README
 examples/statlogs.pl
+examples/vmstat-cpu-daily.png
 examples/vmstat.pl
 INSTALL
 lib/RRD/Simple.pm

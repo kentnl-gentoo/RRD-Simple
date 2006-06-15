@@ -14,6 +14,14 @@ graph.pl
 graph2.pl, graph2-daily.png
     + Generate a meaningless but attractive graph
 
+network.pl
+    + Graph network device throughput by reading /proc/net/dev
+
+meminfo.pl, meminfo-daily.png
+    + Graph memory usage using the Sys::MemInfo module, or by
+      reading /proc/meminfo on Linux if Sys::MemInfo isn't
+      available
+
 df.pl, disk-capacity-daily.png
     + Graph hard disk capacity using the df command
 
@@ -23,8 +31,13 @@ hddtemp.pl, hddtemp-daily.png
 iostat.pl, iostat-hda-daily.png
     + Graph disk activity using the iostat command
 
-vmstat.pl
-    + Graph CPU activity using the vmstat command
+vmstat.pl, vmstat-cpu-daily.png
+    + Graph CPU activity using the vmstat command (an example
+      of using the STACK draw type)
+
+processes.pl
+    + Graph running processes and what state they're in by
+      using /bin/ps or Proc::ProcessTable
 
 mod_perl.pl, example_apache_monitoring.png
     + Graph various metrics from the Apache /server-status

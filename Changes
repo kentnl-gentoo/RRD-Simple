@@ -1,3 +1,32 @@
+Version 1.37 - 15th June 2006
+    + Changed the add_source() method so that new
+      data sources will be appended to the existing
+      data sources, instead of prepended as was done
+      before. This is useful if you are updating
+      your RRD file directly with RRDs.pm and are
+      assuming the order of the data source names
+      in the RRD file.
+
+    + Added ability to use the STACK draw type in
+      the graph() method. See examples/vmstat.pl and
+      examples/vmstat-cpu-daily.png an example of
+      how to use it and what the results can look
+      like.
+
+    + Added a couple more tests to t/26add_source.t
+
+    + $RRD::Simple::DEFAULT_DSTYPE and
+      $RRD::Simple::DEBUG will now no longer be
+      reset/overwritten when loading RRD::Simple,
+      if the values were already defined. The
+      existing documented logic will still work
+      as expected, assuming you do not explicitly
+      set the variable before loading RRD::Simple.
+      This behaviour is intented to reduce confusion.
+
+    + Added examples/processes.pl
+
+
 Version 1.36 - 13th June 2006
     + Changed unit tests to skip tests if they find
       that RRDs is not actually installed. RRDs is

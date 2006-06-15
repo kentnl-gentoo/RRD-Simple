@@ -1,4 +1,4 @@
-# $Id: 26add_source.t 602 2006-06-13 11:54:15Z nicolaw $
+# $Id: 26add_source.t 621 2006-06-15 15:59:50Z nicolaw $
 
 my $rrdfile = -d 't' ? 't/26add_source.rrd' : '26add_source.rrd';
 unlink $rrdfile if -f $rrdfile;
@@ -15,7 +15,7 @@ BEGIN {
 			$okay = 0;
 		}
 	}
-	plan tests => 6 if $okay;
+	plan tests => 8 if $okay;
 }
 
 use lib qw(./lib ../lib);
@@ -31,12 +31,13 @@ ok($rrd->create($rrdfile, "year",
 	),'create');
 
 ok(join(',',sort $rrd->sources($rrdfile)) eq 'bytesDropped,bytesIn,bytesOut,faultsPerSec',
-	'sources');
+	'expected sources okay');
 
 SKIP: {
 	my $info = {};
 	ok($info = $rrd->info($rrdfile),'info');
 
+# add_source() now works on all current RRD versions
 #	skip("RRD file version $info->{rrd_version} is too new to add data source",2)
 #		if ($info->{rrd_version}+1-1) > 1;
 
@@ -47,7 +48,10 @@ SKIP: {
 		),'update (add_source)');
 
 	ok(join(',',sort $rrd->sources($rrdfile)) eq 'bytesDropped,bytesIn,bytesOut,faultsPerSec,totalFaults',
-		'sources');
+		'expected sources okay');
+
+	ok($rrd->add_source($rrdfile,wibble => 'DERIVE'),'add_source()');
+	ok(grep(/^wibble$/,$rrd->sources($rrdfile)),'added source okay')
 }
 
 unlink $rrdfile if -f $rrdfile;

@@ -1,8 +1,8 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: df.pl 584 2006-06-10 18:29:01Z nicolaw $
-#   linux_disk.pl - Example script bundled as part of RRD::Simple
+#   $Id: df.pl 613 2006-06-13 21:22:48Z nicolaw $
+#   df.pl - Example script bundled as part of RRD::Simple
 #
 #   Copyright 2005,2006 Nicola Worthington
 #

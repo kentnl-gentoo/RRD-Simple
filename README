@@ -248,13 +248,18 @@ METHODS
                                     source_name2 => "AREA",
                                     source_name3 => "LINE", },
              );
+         
+ $rrd->graph($rrdfile,
+                 sources => [ qw(system user iowait idle) ]
+                 source_colors => [ qw(AREA STACK STACK STACK) ],
+             );
 
         The "source_drawtypes" parameter is optional. This parameter should
         be an array or hash of drawing/plotting types to be used for the
         plotted data source lines. By default all data sources are drawn as
         lines (LINE), but data sources may also be drawn as filled areas
         (AREA). Valid values are, LINE, LINE*n* (where *n* represents the
-        thickness of the line in pixels), or AREA.
+        thickness of the line in pixels), AREA or STACK.
 
     line_thickness
         Specifies the thickness of the data lines drawn on the graphs for
@@ -347,7 +352,7 @@ SEE ALSO
     RRDTool::OO, RRDs, <http://www.rrdtool.org>, examples/*.pl
 
 VERSION
-    $Id: Simple.pm 608 2006-06-13 16:41:24Z nicolaw $
+    $Id: Simple.pm 625 2006-06-15 17:11:19Z nicolaw $
 
 AUTHOR
     Nicola Worthington <nicolaw@cpan.org>

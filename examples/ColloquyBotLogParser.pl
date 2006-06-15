@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: ColloquyBotLogParser.pl 578 2006-06-08 11:47:52Z nicolaw $
+#   $Id: ColloquyBotLogParser.pl 613 2006-06-13 21:22:48Z nicolaw $
 #   ColloquyBotLogParser.pl - Example script bundled as part of RRD::Simple
 #
 #   Copyright 2005,2006 Nicola Worthington

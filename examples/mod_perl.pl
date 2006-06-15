@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: mod_perl.pl 586 2006-06-10 18:47:57Z nicolaw $
+#   $Id: mod_perl.pl 613 2006-06-13 21:22:48Z nicolaw $
 #   mod_perl.pl - Example script bundled as part of RRD::Simple
 #
 #   Copyright 2006 Nicola Worthington
@@ -44,7 +44,7 @@ use constant HOSTS => qw(
 			);
 
 use vars qw($VERSION $DEBUG $VERBOSE);
-$VERSION = '0.02' || sprintf('%d', q$Revision: 586 $ =~ /(\d+)/g);
+$VERSION = '0.02' || sprintf('%d', q$Revision: 613 $ =~ /(\d+)/g);
 $DEBUG = $ENV{DEBUG} ? 1 : 0;
 $VERBOSE = $ENV{VERBOSE} ? 1 : 0;
 
