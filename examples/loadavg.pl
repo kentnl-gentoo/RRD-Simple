@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: loadavg.pl 637 2006-06-15 21:37:17Z nicolaw $
+#   $Id: loadavg.pl 644 2006-06-16 10:37:49Z nicolaw $
 #   loadavg.pl - Example script bundled as part of RRD::Simple
 #
 #   Copyright 2005,2006 Nicola Worthington
@@ -37,7 +37,11 @@ $rrd->update($rrdfile,
 		'15min' => $avg[2],
 	);
 
-$rrd->graph($rrdfile, sources => [ qw(1min 5min 15min) ],
-	line_thickness => 2, vertical_label => 'Load');
+$rrd->graph($rrdfile,
+		sources => [ qw(1min 5min 15min) ], 
+		source_colors => [ qw(ffbb00 cc0000 0000cc) ],
+		source_drawtypes => [ qw(AREA LINE1 LINE1) ],
+		vertical_label => 'Load'
+	);
 
 

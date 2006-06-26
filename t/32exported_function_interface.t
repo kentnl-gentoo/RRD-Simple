@@ -1,4 +1,4 @@
-# $Id: 32exported_function_interface.t 610 2006-06-13 16:51:43Z nicolaw $
+# $Id: 32exported_function_interface.t 646 2006-06-17 15:15:39Z nicolaw $
 
 chdir('t') if -d 't';
 my $rrdfile = -d 't' ? 't/32test.rrd' : '32test.rrd';
@@ -16,7 +16,7 @@ BEGIN {
 use lib qw(./lib ../lib);
 use RRD::Simple 1.35 qw(:all);
 
-use vars qw($rra %retention_periods %scheme_graphs @schemes);
+use vars qw($rra %retention_periods %scheme_graphs @schemes %graph_return);
 require 'answers.pl';
 
 ok(create($rrdfile,

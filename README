@@ -27,12 +27,13 @@ SYNOPSIS
  # Generate graphs:
      # /var/tmp/myfile-daily.png, /var/tmp/myfile-weekly.png
      # /var/tmp/myfile-monthly.png, /var/tmp/myfile-annual.png
-     my @rtn = $rrd->graph("myfile.rrd",
+     my %rtn = $rrd->graph("myfile.rrd",
                  destination => "/var/tmp",
                  title => "Network Interface eth0",
                  vertical_label => "Bytes/Faults",
                  interlaced => ""
              );
+     printf("Created %s\n",join(", ",map { $rtn{$_}->[0] } keys %rtn));
 
      # Return information about an RRD file
      my $info = $rrd->info("myfile.rrd");
@@ -114,8 +115,8 @@ METHODS
     unixtime). Specifying this value will determine the date and time that
     your data point values will be stored against in the RRD file.
 
-    If you try update a value for a data source that does not exist, it will
-    automatically be added for you. The data source type will be set to
+    If you try to update a value for a data source that does not exist, it
+    will automatically be added for you. The data source type will be set to
     whatever is contained in the $RRD::Simple::DEFAULT_DSTYPE variable. (See
     the VARIABLES section below).
 
@@ -124,6 +125,11 @@ METHODS
     method. You can manually add new data sources to an RRD file by using
     the "add_source" method, which requires you to explicitly set the data
     source type.
+
+    If you try to update an RRD file that does not exist, it will attept to
+    create the RRD file for you using the same behaviour as described above.
+    A warning message will be displayed indicating that the RRD file is
+    being created for you if have perl warnings turned on.
 
   last
      my $unixtime = $rrd->last($rrdfile);
@@ -153,7 +159,7 @@ METHODS
     automatically add missing data sources.
 
   graph
-     $rrd->graph($rrdfile,
+     my %rtn = $rrd->graph($rrdfile,
              destination => "/path/to/write/graph/images",
              basename => "graph_basename",
              sources => [ qw(source_name1 source_name2 source_name3) ],
@@ -201,11 +207,11 @@ METHODS
         sources will be plotted by default.
 
     source_colors
-         $rrd->graph($rrdfile,
+         my %rtn = $rrd->graph($rrdfile,
                  source_colors => [ qw(ff3333 ff00ff ffcc99) ],
              );
          
- $rrd->graph($rrdfile,
+ %rtn = $rrd->graph($rrdfile,
                  source_colors => { source_name1 => "ff3333",
                                     source_name2 => "ff00ff",
                                     source_name3 => "ffcc99", },
@@ -217,12 +223,12 @@ METHODS
         by default.
 
     source_labels
-         $rrd->graph($rrdfile,
+         my %rtn = $rrd->graph($rrdfile,
                  sources => [ qw(source_name1 source_name2 source_name3) ],
                  source_labels => [ ("My Source 1","My Source Two","Source 3") ],
              );
          
- $rrd->graph($rrdfile,
+ %rtn = $rrd->graph($rrdfile,
                  source_labels => { source_name1 => "My Source 1",
                                     source_name2 => "My Source Two",
                                     source_name3 => "Source 3", },
@@ -239,17 +245,17 @@ METHODS
         no "source_labels" parameter is specified.
 
     source_drawtypes
-         $rrd->graph($rrdfile,
+         my %rtn = $rrd->graph($rrdfile,
                  source_drawtypes => [ qw(LINE1 AREA LINE) ],
              );
          
- $rrd->graph($rrdfile,
+ %rtn = $rrd->graph($rrdfile,
                  source_colors => { source_name1 => "LINE1",
                                     source_name2 => "AREA",
                                     source_name3 => "LINE", },
              );
          
- $rrd->graph($rrdfile,
+ %rtn = $rrd->graph($rrdfile,
                  sources => [ qw(system user iowait idle) ]
                  source_colors => [ qw(AREA STACK STACK STACK) ],
              );
@@ -352,7 +358,7 @@ SEE ALSO
     RRDTool::OO, RRDs, <http://www.rrdtool.org>, examples/*.pl
 
 VERSION
-    $Id: Simple.pm 642 2006-06-15 22:23:39Z nicolaw $
+    $Id: Simple.pm 682 2006-06-24 22:58:27Z nicolaw $
 
 AUTHOR
     Nicola Worthington <nicolaw@cpan.org>

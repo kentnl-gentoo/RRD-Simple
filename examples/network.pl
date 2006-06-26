@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: network.pl 619 2006-06-13 23:16:17Z nicolaw $
+#   $Id: network.pl 645 2006-06-16 10:53:12Z nicolaw $
 #   network.pl - Example script bundled as part of RRD::Simple
 #
 #   Copyright 2006 Nicola Worthington
@@ -59,9 +59,12 @@ for my $dev (keys %update) {
 
 	$rrd->update($rrdfile, %tmp);
 	$rrd->graph($rrdfile,
-			line_thickness => 2,
 			vertical_label => 'bytes/sec',
-			sources => [ sort grep(/.X(bytes|packets|errs)/,@keys) ],
+			#sources => [ sort grep(/.X(bytes|packets|errs)/,@keys) ],
+			sources => [ qw(TXbytes RXbytes) ],
+			source_labels => [ qw(transmit recieve) ],
+			source_drawtypes => [ qw(AREA LINE) ],
+			source_colors => [ qw(00dd00 0000dd) ],
 			extended_legend => 1,
 		);
 }

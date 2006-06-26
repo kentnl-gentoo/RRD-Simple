@@ -1,4 +1,4 @@
-# $Id: 24retention_period.t 610 2006-06-13 16:51:43Z nicolaw $
+# $Id: 24retention_period.t 646 2006-06-17 15:15:39Z nicolaw $
 
 chdir('t') if -d 't';
 my $rrdfile = -d 't' ? 't/24test.rrd' : '24test.rrd';
@@ -16,7 +16,7 @@ BEGIN {
 use lib qw(./lib ../lib);
 use RRD::Simple 1.35 ();
 
-use vars qw($rra %retention_periods %scheme_graphs @schemes);
+use vars qw($rra %retention_periods %scheme_graphs @schemes %graph_return);
 require 'answers.pl';
 
 ok(my $rrd = RRD::Simple->new(),'new');

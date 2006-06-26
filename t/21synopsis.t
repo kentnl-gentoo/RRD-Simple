@@ -1,4 +1,4 @@
-# $Id: 21synopsis.t 610 2006-06-13 16:51:43Z nicolaw $
+# $Id: 21synopsis.t 646 2006-06-17 15:15:39Z nicolaw $
 
 chdir('t') if -d 't';
 my $rrdfile = -d 't' ? 't/21test.rrd' : '21test.rrd';
@@ -10,7 +10,7 @@ BEGIN {
 	use Test::More;
 	eval "use RRDs";
 	plan skip_all => "RRDs.pm *MUST* be installed!" if $@;
-	plan tests => 5 if !$@;
+	plan tests => 7 if !$@;
 }
 
 use lib qw(./lib ../lib);
@@ -44,6 +44,21 @@ ok($rrd->last($rrdfile) - $updated < 5 && $rrd->last($rrdfile),
 
 ok(join(',',sort $rrd->sources($rrdfile)) eq 'bytesIn,bytesOut,faultsPerSec',
 	'sources');
+
+my %rtn = ();
+ok(%rtn = $rrd->graph($rrdfile,
+		title => "Network Interface eth0",
+		vertical_label => "Bytes/Faults",
+		interlaced => ""
+	),'graph');
+
+my $str = sprintf("Created %s",join(", ",map { $rtn{$_}->[0] } sort keys %rtn));
+my $expected = "Created 21test-annual.png, 21test-daily.png, 21test-monthly.png, 21test-weekly.png";
+ok("$str" eq "$expected",'created graphs');
+
+for (map { $rtn{$_}->[0] } keys %rtn) {
+	unlink $_ if -f $_;
+}
 
 unlink $rrdfile if -f $rrdfile;
 

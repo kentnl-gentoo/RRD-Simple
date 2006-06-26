@@ -1,4 +1,4 @@
-# $Id: answers.pl 427 2006-05-01 17:13:58Z nicolaw $
+# $Id: answers.pl 646 2006-06-17 15:15:39Z nicolaw $
 
 %scheme_graphs = (
 		'3years' => [ qw(daily weekly monthly annual 3years) ],
@@ -15,6 +15,29 @@
 	'month'  => 3348000,
 	'week'   => 756000,
 	'day'    => 108000,);
+
+%graph_return = (
+	'daily' => [(
+			'bytesIn min 100.00', 'bytesIn max 100.00', 'bytesIn last 100.00',
+			'bytesOut min 50.00', 'bytesOut max 50.00', 'bytesOut last 50.00'
+		)],
+	'weekly' => [(
+			'bytesIn min 100.00', 'bytesIn max 100.00', 'bytesIn last 100.00',
+			'bytesOut min 50.00', 'bytesOut max 50.00', 'bytesOut last 50.00'
+		)],
+	'monthly' => [(
+			'bytesIn min nan', 'bytesIn max nan', 'bytesIn last nan',
+			'bytesOut min nan', 'bytesOut max nan', 'bytesOut last nan'
+		)],
+	'annual' => [(
+			'bytesIn min nan', 'bytesIn max nan', 'bytesIn last nan',
+			'bytesOut min nan', 'bytesOut max nan', 'bytesOut last nan'
+		)],
+	'3years' => [(
+			'bytesIn min nan', 'bytesIn max nan', 'bytesIn last nan',
+			'bytesOut min nan', 'bytesOut max nan', 'bytesOut last nan'
+		)],
+	);
 
 @schemes = keys %retention_periods;
 
