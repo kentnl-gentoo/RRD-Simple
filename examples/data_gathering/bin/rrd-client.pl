@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: rrd-client.pl 627 2006-06-15 17:22:45Z nicolaw $
+#   $Id: rrd-client.pl 747 2006-08-24 21:29:07Z nicolaw $
 #   rrd-client.pl - Data gathering script for RRD::Simple
 #
 #   Copyright 2006 Nicola Worthington
@@ -21,22 +21,47 @@
 ############################################################
 # vim:ts=4:sw=4:tw=78
 
+############################################################
+# User defined constants
+use constant DB_MYSQL_DSN  => $ENV{DB_MYSQL_DSN} || 'DBI:mysql:mysql:localhost';
+use constant DB_MYSQL_USER => $ENV{DB_MYSQL_USER} || undef;
+use constant DB_MYSQL_PASS => $ENV{DB_MYSQL_PASS} || undef;
+
+use constant NET_PING_HOSTS => $ENV{NET_PING_HOSTS} ?
+		(split(/[\s,:]+/,$ENV{NET_PING_HOSTS})) : qw();
+
+#
+#  YOU SHOULD NOT NEED TO EDIT ANYTHING BEYOND THIS POINT
+#
+############################################################
+
+
+
+
+
 use 5.004;
 use strict;
 use warnings;
 use vars qw($VERSION);
 
-$VERSION = '1.39' || sprintf('%d', q$Revision: 429 $ =~ /(\d+)/g);
+$VERSION = '1.40' || sprintf('%d', q$Revision: 747 $ =~ /(\d+)/g);
+$ENV{PATH} = '/bin:/usr/bin';
+delete @ENV{qw(IFS CDPATH ENV BASH_ENV)};
+
 
 # Default list of probes
 my @probes = qw(
-		cpu_utilisation cpu_loadavg cpu_temp
-		hdd_io mem_usage hdd_temp hdd_capacity
-		net_traffic net_connections
-		proc_state proc_filehandles
+		cpu_utilisation cpu_loadavg cpu_temp cpu_interrupts
+		hdd_io hdd_temp hdd_capacity
+		mem_usage mem_swap_activity
+		proc_threads proc_state proc_filehandles
 		apache_status apache_logs
-		misc_uptime misc_users
+		misc_uptime misc_users misc_ipmi_temp
+		db_mysql_activity
+		mail_exim_queue mail_postfix_queue mail_sendmail_queue
+		net_traffic net_connections net_ping_host net_connections_ports
 	);
+
 
 # Get command line options
 my %opt = ();
@@ -44,6 +69,7 @@ eval "require Getopt::Std";
 Getopt::Std::getopts('p:i:x:hv', \%opt) unless $@;
 (display_help() && exit) if defined $opt{h};
 (display_version() && exit) if defined $opt{v};
+
 
 # Filter on probe include list
 if (defined $opt{i}) {
@@ -57,25 +83,35 @@ if (defined $opt{x}) {
 	@probes = grep(!/(^|_)($exc)(_|$)/,@probes);
 }
 
+
 # Run the probes one by one
 die "Nothing to probe!\n" unless @probes;
 my $post = '';
+my %update_cache;
 for my $probe (@probes) {
 	eval {
+		local $SIG{ALRM} = sub { die "Timeout!\n"; };
+		alarm 15;
 		my $str = report($probe,eval "$probe();");
 		if (defined $opt{p}) {
 			$post .= $str;
 		} else {
 			print $str;
 		}
+		warn "$probe: $@" if $@;
+		alarm 0;
 	};
-	warn $@ if $@;
+	warn "$probe: $@" if $@;
 }
 
+
 # HTTP POST the data if asked to
-print(scalar basic_http('POST',$opt{p},30,$post), "\n") if $opt{p};
+print scalar(basic_http('POST',$opt{p},30,$post))."\n" if $opt{p};
+
 
 exit;
+
+
 
 
 
@@ -91,6 +127,7 @@ sub report {
 	return $str;
 }
 
+
 # Display help
 sub display_help {
 	print qq{Syntax: $0 [-i probe1,probe2,..|-x probe1,probe2,..] [-p url] [-h|-v]
@@ -101,10 +138,12 @@ sub display_help {
      -h              Display this help\n};
 }
 
+
 # Display version
 sub display_version {
-	print "$0 version $VERSION ".'($Id$)'."\n";
+	print "$0 version $VERSION ".'($Id: rrd-client.pl 747 2006-08-24 21:29:07Z nicolaw $)'."\n";
 }
+
 
 # Basic HTTP client if LWP is unavailable
 sub basic_http {
@@ -139,7 +178,7 @@ sub basic_http {
 		# Send the HTTP request
 		print SOCK "$method $path HTTP/1.1\n";
 		print SOCK "Host: $host". ("$port" ne "80" ? ":$port" : '') ."\n";
-		print SOCK "User-Agent: $0 $VERSION\n";
+		print SOCK "User-Agent: $0 version $VERSION ".'($Id: rrd-client.pl 747 2006-08-24 21:29:07Z nicolaw $)'."\n";
 		if ($post && $method eq 'POST') {
 			print SOCK "Content-Length: ". length($post) ."\n";
 			print SOCK "Content-Type: application/x-www-form-urlencoded\n";
@@ -156,9 +195,23 @@ sub basic_http {
 		alarm 0;
 	};
 
-	warn $@ if $@ && $post;
-	return wantarray ? split(/\n/,$str) : $str;
+	warn "basic_http: $@" if $@ && $post;
+	return wantarray ? split(/\n/,$str) : "$str";
 }
+
+
+# Return the most appropriate binary command
+sub select_cmd {
+	foreach (@_) {
+		if (-f $_ && -x $_ && /(\S+)/) {
+			return $1;
+		}
+	}
+	return '';
+}
+
+
+
 
 
 
@@ -166,11 +219,169 @@ sub basic_http {
 # Probes
 #
 
+sub net_ping_host {
+	return unless defined NET_PING_HOSTS() && scalar NET_PING_HOSTS() > 0;
+	my $cmd = select_cmd(qw(/bin/ping /usr/bin/ping /sbin/ping /usr/sbin/ping));
+	return unless -f $cmd;
+	my %update = ();
+	my $count = 3;
+
+	for my $str (NET_PING_HOSTS()) {
+		my ($host) = $str =~ /^([\w\d_\-\.]+)$/i;
+		next unless $host;
+		my $cmd2 = "$cmd -c $count $host 2>&1";
+
+		open(PH,'-|',$cmd2) || die "Unable to open file handle PH for command '$cmd2': $!\n";
+		while (local $_ = <PH>) {
+			if (/\s+(\d+)%\s+packet\s+loss[\s,]/i) {
+				$update{"$host.PacketLoss"} = $1 || 0;
+			} elsif (my ($min,$avg,$max,$mdev) = $_ =~
+					/\s+([\d\.]+)\/([\d\.]+)\/([\d\.]+)\/([\d\.]+)\s+/) {
+				$update{"$host.AvgRTT"} = $avg || 0;
+				$update{"$host.MinRTT"} = $min || 0;
+				$update{"$host.MaxRTT"} = $max || 0;
+				$update{"$host.MDevRTT"} = $mdev || 0;
+			}
+		}
+		close(PH) || die "Unable to close file handle PH for command '$cmd2': $!\n";
+	}
+
+	return %update;
+}
+
+
+
+sub proc_threads {
+	return unless ($^O eq 'linux' && `/bin/uname -r 2>&1` =~ /^2\.6\./) ||
+					($^O eq 'solaris' && `/bin/uname -r 2>&1` =~ /^5\.9/);
+	my %update = ();
+	my $cmd = '/bin/ps -eo pid,nlwp';
+
+	open(PH,'-|',$cmd) || die "Unable to open file handle for command '$cmd': $!";
+	while (local $_ = <PH>) {
+		if (my ($pid,$nlwp) = $_ =~ /^\s*(\d+)\s+(\d+)\s*$/) {
+			$update{Processes}++;
+			$update{Threads} += $nlwp;
+			$update{MultiThreadProcs}++ if $nlwp > 1;
+		}
+	}
+	close(PH) || die "Unable to close file handle for command '$cmd': $!";
+
+	return %update;
+}
+
+
+
+sub mail_exim_queue {
+	my $spooldir = '/var/spool/exim/input';
+	return unless -d $spooldir && -x $spooldir && -r $spooldir;
+
+	local %mail::exim::queue::update = ();
+	require File::Find;
+	File::Find::find({wanted => sub {
+			my ($dev,$ino,$mode,$nlink,$uid,$gid);
+			(($dev,$ino,$mode,$nlink,$uid,$gid) = lstat($_)) &&
+			-f _ &&
+			/^.*-D\z/s &&
+			$mail::exim::queue::update{Messages}++;
+		}, no_chdir => 1}, $spooldir);
+	return %mail::exim::queue::update;
+}
+
+
+sub mail_sendmail_queue {
+	my $spooldir = '/var/spool/mqueue';
+	return unless -d $spooldir && -x $spooldir && -r $spooldir;
+
+	local %mail::sendmail::queue::update = ();
+	require File::Find;
+	File::Find::find({wanted => sub {
+			my ($dev,$ino,$mode,$nlink,$uid,$gid);
+			(($dev,$ino,$mode,$nlink,$uid,$gid) = lstat($_)) &&
+			-f _ &&
+			/^Qf[a-zA-Z0-9]{14}\z/s &&
+			$mail::sendmail::queue::update{Messages}++;
+		}, no_chdir => 1}, $spooldir);
+	return %mail::sendmail::queue::update;
+}
+
+
+
+sub mail_postfix_queue {
+	my @spooldirs = qw(
+			/var/spool/postfix/incoming
+			/var/spool/postfix/active
+			/var/spool/postfix/defer
+			/var/spool/postfix/deferred
+		);
+	for my $spooldir (@spooldirs) {
+		return unless -d $spooldir && -x $spooldir && -r $spooldir;
+	}
+
+	local %mail::postfix::queue::update = ();
+	require File::Find;
+	File::Find::find({wanted => sub {
+			my ($dev,$ino,$mode,$nlink,$uid,$gid);
+			(($dev,$ino,$mode,$nlink,$uid,$gid) = lstat($_)) &&
+			-f _ &&
+			$mail::postfix::queue::update{Messages}++;
+		}, no_chdir => 1}, @spooldirs);
+	return %mail::postfix::queue::update;
+}
+
+
+
+# DO NOT ENABLE THIS ONE YET
+sub mail_queue {
+	my $cmd = select_cmd(qw(/usr/bin/mailq /usr/sbin/mailq /usr/local/bin/mailq
+			/usr/local/sbin/mailq /bin/mailq /sbin/mailq
+			/usr/local/exim/bin/mailq /home/system/exim/bin/mailq));
+	return unless -f $cmd;
+
+	my %update = ();
+
+	open(PH,'-|',$cmd) || die "Unable to open file handle PH for command '$cmd': $!\n";
+	while (local $_ = <PH>) {
+		# This needs to match a single message id = currently only exim friendly
+		if (/^\s*\S+\s+\S+\s+[a-z0-9]{6}-[a-z0-9]{6}-[a-z0-9]{2} </i) {
+			$update{Messages}++;
+		}
+	}
+	close(PH) || die "Unable to close file handle PH for command '$cmd': $!\n";
+	$update{Messages} = 0 if !defined($update{Messages});
+
+	return %update;
+}
+
+
+
+sub db_mysql_activity {
+	my %update = ();
+	return %update unless (defined DB_MYSQL_DSN && defined DB_MYSQL_USER);
+
+	eval {
+		require DBI;
+		my $dbh = DBI->connect(DB_MYSQL_DSN,DB_MYSQL_USER,DB_MYSQL_PASS);
+		my $sth = $dbh->prepare('SHOW STATUS');
+		$sth->execute();
+		while (my @ary = $sth->fetchrow_array()) {
+			if ($ary[0] =~ /^Questions$/i) {
+				%update = @ary;
+				last;
+			}
+		}
+		$sth->finish();
+		$dbh->disconnect();
+	};
+
+	return %update;
+}
+
+
+
 sub misc_users {
-	my $cmd = -f '/usr/bin/who' ? '/usr/bin/who' : 
-			-f '/bin/who' ? '/bin/who' :
-			-f '/usr/bin/w' ? '/usr/bin/w' : '/bin/w';
-	return () unless -f $cmd;
+	my $cmd = select_cmd(qw(/usr/bin/who /bin/who /usr/bin/w /bin/w));
+	return unless -f $cmd;
 	my %update = ();
 
 	open(PH,'-|',$cmd) || die "Unable to open file handle PH for command '$cmd': $!\n";
@@ -180,27 +391,30 @@ sub misc_users {
 		$users{(split(/\s+/,$_))[0]}++;
 		$update{Users}++;
 	}
-	close(PH) || warn "Unable to close file handle PH for command '$cmd': $!\n";
+	close(PH) || die "Unable to close file handle PH for command '$cmd': $!\n";
 	$update{Unique} = keys %users if keys %users;
 
 	unless (keys %update) {
 		$cmd = -f '/usr/bin/uptime' ? '/usr/bin/uptime' : '/bin/uptime';
-		if (my ($users) = `$cmd` =~ /,\s*(\d+)\s*users\s*,/i) {
+		if (my ($users) = `$cmd` =~ /,\s*(\d+)\s*users?\s*,/i) {
 			$update{Users} = $1;
 		}
 	}
 
+	$update{Users} ||= 0;
+	$update{Unique} ||= 0;
+
 	return %update;
 }
 
+
+
 sub misc_uptime {
-	my $cmd = -f '/usr/bin/uptime' ? '/usr/bin/uptime' : '/bin/uptime';
-	return () unless -f $cmd;
+	my $cmd = select_cmd(qw(/usr/bin/uptime /bin/uptime));
+	return unless -f $cmd;
 	my %update = ();
 
-# 5:40PM  up 28 days, 18:27, 11 users, load averages: 1.00, 1.00, 1.00
-# 17:52:37 up 52 min,  2 users,  load average: 0.21, 0.16, 0.07
-	if (my ($str) = `$cmd` =~ /\s*up\s*(.+?)\s*,\s*\d+\s*users/) {
+	if (my ($str) = `$cmd` =~ /\s*up\s*(.+?)\s*,\s*\d+\s*users?/) {
 		my $days = 0;
 		if (my ($nuke,$num) = $str =~ /(\s*(\d+)\s*days?,?\s*)/) {
 			$str =~ s/$nuke//;
@@ -210,7 +424,7 @@ sub misc_uptime {
 			$str =~ s/$nuke//;
 			$days += ($mins / (60*24));
 		}
-		if (my ($nuke,$hours) = $str =~ /(\s*(\d+)\s*hours?,?\s*)/) {
+		if (my ($nuke,$hours) = $str =~ /(\s*(\d+)\s*(hour|hr)s?,?\s*)/) {
 			$str =~ s/$nuke//;
 			$days += ($hours / 24);
 		}
@@ -224,32 +438,36 @@ sub misc_uptime {
 	return %update;
 }
 
+
+
 sub cpu_temp {
 	my $cmd = '/usr/bin/sensors';
-	return () unless -f $cmd;
+	return unless -f $cmd;
 	my %update = ();
 
 	open(PH,'-|',$cmd) || die "Unable to open file handle PH for command '$cmd': $!\n";
 	while (local $_ = <PH>) {
-		if (my ($k,$v) = $_ =~ /^([^:]*\bCPU\b.*?):\s*\S*?([\d\.]+)\S*\s*/) {
+		if (my ($k,$v) = $_ =~ /^([^:]*\b(?:CPU|temp)\d*\b.*?):\s*\S*?([\d\.]+)\S*\s*/i) {
 			$k =~ s/\W//g; $k =~ s/Temp$//i;
 			$update{$k} = $v;
 		}
 	}
-	close(PH) || warn "Unable to close file handle PH for command '$cmd': $!\n";
+	close(PH) || die "Unable to close file handle PH for command '$cmd': $!\n";
 
 	return %update;
 }
 
+
+
 sub apache_logs {
 	my $dir = '/var/log/httpd';
-	return () unless -d $dir;
+	return unless -d $dir;
 	my %update = ();
 
 	if (-d $dir) {
 		opendir(DH,$dir) || die "Unable to open file handle for directory '$dir': $!\n";
 		my @files = grep(!/^\./,readdir(DH));
-		closedir(DH) || warn "Unable to close file handle for directory '$dir': $!\n";
+		closedir(DH) || die "Unable to close file handle for directory '$dir': $!\n";
 		for (@files) {
 			next if /\.(\d+|gz|bz2|Z|zip|old|bak|pid|backup)$/i || /[_\.\-]pid$/;
 			my $file = "$dir/$_";
@@ -261,6 +479,8 @@ sub apache_logs {
 
 	return %update;
 }
+
+
 
 sub apache_status {
 	my @data = ();
@@ -276,14 +496,16 @@ sub apache_status {
 	eval "use LWP::UserAgent";
 	unless ($@) {
 		eval {
-			my $ua = LWP::UserAgent->new(agent => "$0 $VERSION", timeout => $timeout);
+			my $ua = LWP::UserAgent->new(
+				agent => "$0 version $VERSION ".'($Id)',
+				 timeout => $timeout);
 			$ua->env_proxy;
 			$ua->max_size(1024*250);
 			my $response = $ua->get($url);
 			if ($response->is_success) {
 				@data = split(/\n+|\r+/,$response->content);
 			} else {
-				warn "failed to get $url; ". $response->status_line ."\n";
+				warn "apache_status: failed to get $url; ". $response->status_line ."\n";
 			}
 		};
 	}
@@ -316,32 +538,138 @@ sub apache_status {
 	return %update;
 }
 
-sub cpu_utilisation {
-	my $cmd = '/usr/bin/vmstat';
-	return () unless -f $cmd;
-	$cmd .= ' 1 2';
 
-	my @keys = ();
-	my %update = ();
-	my %labels = (wa => 'IO_Wait', id => 'Idle', sy => 'System', us => 'User');
 
-	open(PH,'-|',$cmd) || die "Unable to open file handle PH for command '$cmd': $!\n";
-	while (local $_ = <PH>) {
-		s/^\s+|\s+$//g;
-		if (/\s+\d+\s+\d+\s+\d+\s+/ && @keys) {
-			@update{@keys} = split(/\s+/,$_);
-		} else { @keys = split(/\s+/,$_); }
+sub _darwin_cpu_utilisation {
+	my $output = qx{/usr/bin/sar 4 1};
+	my %rv = ();
+	if ($output =~ m/Average:\s+(\d+)\s+(\d+)\s+(\d+)/) {
+		%rv = (
+				User => $1,
+				System => $2,
+				Idle => $3,
+				IO_Wait => 0, # at the time of writing, sar doesn't provide this metric
+			);
 	}
-	close(PH) || warn "Unable to close file handle PH for command '$cmd': $!\n";
+	return %rv;
+}
+
+
+
+sub cpu_utilisation {
+	if ($^O eq 'darwin') {
+		return _darwin_cpu_utilisation();
+	}
+
+	my $cmd = '/usr/bin/vmstat';
+	return unless -f $cmd;
+	my %update = _parse_vmstat("$cmd 1 2");
+	my %labels = (wa => 'IO_Wait', id => 'Idle', sy => 'System', us => 'User');
 
 	$update{$_} ||= 0 for keys %labels;
 	return ( map {( $labels{$_} || $_ => $update{$_} )} keys %labels );
 }
 
+
+
+sub cpu_interrupts {
+	my $cmd = '/usr/bin/vmstat';
+	return unless -f $cmd;
+
+	my %update = _parse_vmstat("$cmd 1 2");
+	my %labels = (in => 'Interrupts');
+	return unless defined $update{in};
+
+	$update{$_} ||= 0 for keys %labels;
+	return ( map {( $labels{$_} || $_ => $update{$_} )} keys %labels );
+}
+
+
+
+sub mem_swap_activity {
+	my $cmd = '/usr/bin/vmstat';
+	return unless -f $cmd;
+
+	my %update = _parse_vmstat("$cmd 1 2");
+	my %labels = (si => 'Swap_In', so => 'Swap_Out');
+	return unless defined $update{si} && defined $update{so};
+
+	$update{$_} ||= 0 for keys %labels;
+	return ( map {( $labels{$_} || $_ => $update{$_} )} keys %labels );
+}
+
+
+
+sub _parse_vmstat {
+	my $cmd = shift;
+	my %update;
+	my @keys;
+
+	if (exists $update_cache{vmstat}) {
+		%update = %{$update_cache{vmstat}};
+	} else {
+		open(PH,'-|',$cmd) || die "Unable to open file handle PH for command '$cmd': $!\n";
+		while (local $_ = <PH>) {
+			s/^\s+|\s+$//g;
+			if (/\s+\d+\s+\d+\s+\d+\s+/ && @keys) {
+				@update{@keys} = split(/\s+/,$_);
+			} else { @keys = split(/\s+/,$_); }
+		}
+		close(PH) || die "Unable to close file handle PH for command '$cmd': $!\n";
+		$update_cache{vmstat} = \%update;
+	}
+
+	return %update;
+}
+
+
+
+sub _parse_ipmitool_sensor {
+	my $cmd = shift;
+	my %update;
+	my @keys;
+
+	if (exists $update_cache{ipmitool_sensor}) {
+		%update = %{$update_cache{ipmitool_sensor}};
+	} else {
+		if ((-e '/dev/ipmi0' || -e '/dev/ipmi/0') && open(PH,'-|',$cmd)) {
+			while (local $_ = <PH>) {
+					chomp; s/(^\s+|\s+$)//g;
+					my ($key,@ary) = split(/\s*\|\s*/,$_);
+					$key =~ s/[^a-zA-Z0-9_]//g;
+					$update{$key} = \@ary;
+			}
+			close(PH);
+			$update_cache{ipmitool_sensor} = \%update;
+		}
+	}
+
+	return %update;
+}
+
+
+
+sub misc_ipmi_temp {
+	my $cmd = select_cmd(qw(/usr/bin/ipmitool));
+	return unless -f $cmd;
+
+	my %update = ();
+	my %data = _parse_ipmitool_sensor("$cmd sensor");
+	for (grep(/temp/i,keys %data)) {
+		$update{$_} = $data{$_}->[0]
+			if $data{$_}->[0] =~ /^[0-9\.]+$/;
+	}
+	return unless keys %update;
+
+	return %update;;
+}
+
+
+
 sub hdd_io {
-	my $cmd = -f '/usr/bin/iostat' ? '/usr/bin/iostat' : '/usr/sbin/iostat';
-	return () unless -f $cmd;
-	return () unless $^O eq 'linux';
+	my $cmd = select_cmd(qw(/usr/bin/iostat /usr/sbin/iostat));
+	return unless -f $cmd;
+	return unless $^O eq 'linux';
 	$cmd .= ' -k';
 
 	my %update = ();
@@ -353,14 +681,16 @@ sub hdd_io {
 			$update{"$dev.Write"} = $w*1024;
 		}
 	}
-	close(PH) || warn "Unable to close file handle PH for command '$cmd': $!\n";
+	close(PH) || die "Unable to close file handle PH for command '$cmd': $!\n";
 
 	return %update;
 }
 
+
+
 sub mem_usage {
 	my %update = ();
-	my $cmd = -f '/usr/bin/free' ? '/usr/bin/free' : '/bin/free';
+	my $cmd = select_cmd(qw(/usr/bin/free /bin/free));
 	my @keys = ();
 
 	if ($^O eq 'linux' && -f $cmd && -x $cmd) {
@@ -384,26 +714,15 @@ sub mem_usage {
 				@keys = split(/\s+/,$1);
 			}
 		}
-		close(PH) || warn "Unable to close file handle PH for command '$cmd': $!\n";
+		close(PH) || die "Unable to close file handle PH for command '$cmd': $!\n";
 
-#	} elsif (-f '/proc/meminfo') {
-#		open(FH,'<','/proc/meminfo') || die "Unable to open '/proc/meminfo': $!\n";
-#		while (local $_ = <FH>) {
-#			if (my ($key,$value,$kb) = $_ =~ /^(\w+):\s+(\d+)\s*(kB)\s*$/i) {
-#				next unless $key =~ /^(MemTotal|MemFree|Buffers|Cached|SwapFree|SwapTotal)$/i;
-#				$value *= 1024 if defined $kb;
-#				if ($key =~ /^Swap/i) {
-#					$update{"swap.$key"} = $value;
-#				} else {
-#					$update{$key} = $value;
-#				}
-#			}
-#		}
-#		if (exists $update{"swap.SwapTotal"} && exists $update{"swap.SwapFree"}) {
-#			$update{"swap.SwapUsed"} = $update{"swap.SwapTotal"} - $update{"swap.SwapFree"};
-#			delete $update{"swap.SwapFree"};
-#		}
-#		close(FH) || warn "Unable to close '/proc/meminfo': $!\n";
+	} elsif ($^O eq 'darwin' && -x '/usr/sbin/sysctl') {
+		my $swap = qx{/usr/sbin/sysctl vm.swapusage};
+		if ($swap =~ m/total = (.+)M  used = (.+)M  free = (.+)M/) {
+			$update{"swap.Total"} = $1*1024*1024;
+			$update{"swap.Used"} = $2*1024*1024;
+			$update{"swap.Free"} = $3*1024*1024;
+		}
 
 	} else {
 		eval "use Sys::MemInfo qw(totalmem freemem)";
@@ -414,12 +733,22 @@ sub mem_usage {
 	return %update;
 }
 
-sub hdd_temp {
-	my $cmd = '/usr/sbin/hddtemp';
-	return () unless -f $cmd;
-	$cmd .= '  -q /dev/hd? /dev/sd?';
 
+
+sub hdd_temp {
+	my $cmd = select_cmd(qw(/usr/sbin/hddtemp /usr/bin/hddtemp));
+	return unless -f $cmd;
+
+	my @devs = ();
+	for my $dev (glob('/dev/hd?'),glob('/dev/sd?')) {
+		if ($dev =~ /^(\/dev\/\w{3})$/i) {
+			push @devs, $1;
+		}
+	}
+
+	$cmd .= "  -q @devs";
 	my %update = ();
+	return %update unless @devs;
 
 	open(PH,'-|',$cmd) || die "Unable to open file handle PH for command '$cmd': $!\n";
 	while (local $_ = <PH>) {
@@ -427,30 +756,55 @@ sub hdd_temp {
 			$update{$dev} = $temp;
 		}
 	}
-	close(PH) || warn "Unable to close file handle PH for command '$cmd': $!\n";
+	close(PH) || die "Unable to close file handle PH for command '$cmd': $!\n";
 
 	return %update;
 }
 
-sub hdd_capacity {
-	my %update = ();
-	my @data = split(/\n/, ($^O =~ /linux/ ? `df -P -x iso9660` : `df -P`));
-	shift @data;
 
-	for (@data) {
-		my ($fs,$blocks,$used,$avail,$capacity,$mount) = split(/\s+/,$_);
-		next if ($fs eq 'none' || $mount =~ m#^/dev/#);
-		if (my ($val) = $capacity =~ /(\d+)/) {
-			(my $ds = $mount) =~ s/\//_/g;
-			$update{$ds} = $val;
-		} 
+
+sub hdd_capacity {
+	my $cmd = select_cmd(qw(/bin/df /usr/bin/df));
+	return unless -f $cmd;
+
+	if ($^O eq 'linux') { $cmd .= ' -P -x iso9660 -x nfs -x smbfs'; }
+	elsif ($^O eq 'solaris') { $cmd .= ' -lk -F ufs'; }
+	elsif ($^O eq 'darwin') { $cmd .= ' -P -T hfs,ufs'; }
+	else { $cmd .= ' -P'; }
+
+	my %update = ();
+	my %variants = (
+			'' => '',
+			'inodes.' => ' -i ',
+		);
+
+	for my $variant (keys %variants) {
+		my $variant_cmd = "$cmd $variants{$variant}";
+		my @data = split(/\n/, `$variant_cmd`);
+		shift @data;
+
+		my @cols = qw(fs blocks used avail capacity mount unknown);
+		for (@data) {
+			my %data = ();
+			@data{@cols} = split(/\s+/,$_);
+			if ($^O eq 'darwin' || defined $data{unknown}) {
+				@data{@cols} = $_ =~ /^(.+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)%?\s+(.+)\s*$/;
+			}
+
+			next if ($data{fs} eq 'none' || $data{mount} =~ m#^/dev/#);
+			$data{capacity} =~ s/\%//;
+			(my $ds = $data{mount}) =~ s/[^a-z0-9]/_/ig; $ds =~ s/__+/_/g;
+			$update{"${variant}$ds"} = $data{capacity};
+		}
 	}
 
 	return %update;
 }
 
+
+
 sub net_traffic {
-	return () unless -f '/proc/net/dev';
+	return unless -f '/proc/net/dev';
 	my @keys = ();
 	my %update = ();
 
@@ -472,19 +826,20 @@ sub net_traffic {
 			@keys = (map({"RX$_"} split(/\s+/,$rx)), map{"TX$_"} split(/\s+/,$tx));
 		}
 	}
-
-	close(FH) || warn "Unable to close '/proc/net/dev': $!\n";
+	close(FH) || die "Unable to close '/proc/net/dev': $!\n";
 
 	return %update;
 }
 
+
+
 sub proc_state {
-	my $cmd = -f '/bin/ps' ? '/bin/ps' : '/usr/bin/ps';
+	my $cmd = select_cmd(qw(/bin/ps /usr/bin/ps));
 	my %update = ();
 	my %keys = ();
 
 	if (-f $cmd && -x $cmd) {
-		if ($^O eq 'freebsd') {
+		if ($^O eq 'freebsd' || $^O eq 'darwin') {
 			$cmd .= ' axo pid,state';
 		#	%keys = (D => 'IO_Wait', R => 'Run', S => 'Sleep', T => 'Stopped',
 		#			I => 'Idle', L => 'Lock_Wait', Z => 'Zombie', W => 'Idle_Thread');
@@ -504,7 +859,7 @@ sub proc_state {
 				$update{$keys{$state}||$state}++ if $state;
 			}
 		}
-		close(PH) || warn "Unable to close file handle for command '$cmd': $!\n";
+		close(PH) || die "Unable to close file handle for command '$cmd': $!\n";
 		$update{$_} ||= 0 for values %keys;
 
 	} else {
@@ -519,6 +874,8 @@ sub proc_state {
 	return %update;
 }
 
+
+
 sub cpu_loadavg {
 	my %update = ();
 	my @data = ();
@@ -526,7 +883,7 @@ sub cpu_loadavg {
 	if (-f '/proc/loadavg') {
 		open(FH,'<','/proc/loadavg') || die "Unable to open '/proc/loadavg': $!\n";
 		my $str = <FH>;
-		close(FH) || warn "Unable to close '/proc/loadavg': $!\n";
+		close(FH) || die "Unable to close '/proc/loadavg': $!\n";
 		@data = split(/\s+/,$str);
 
 	} else {
@@ -543,31 +900,78 @@ sub cpu_loadavg {
 	return %update;
 }
 
-sub net_connections {
-	my $cmd = -f '/bin/netstat' ? '/bin/netstat' : '/usr/bin/netstat';
-	return () unless -f $cmd;
+
+
+sub _parse_netstat {
+	my $cmd = shift;
+	my $update;
+	my @keys = qw(local_ip local_port remote_ip remote_port);
+
+	if (exists $update_cache{netstat}) {
+		$update = $update_cache{netstat};
+	} else {
+		open(PH,'-|',$cmd) || die "Unable to open file handle for command '$cmd': $!\n";
+		while (local $_ = <PH>) {
+			my %line;
+			if (@line{qw(proto data state)} = $_ =~ /^(tcp[46]?|udp[46]?|raw)\s+(.+)\s+([A-Z_]+)\s*$/) {
+				@line{@keys} = $line{data} =~ /(?:^|[\s\b])([:abcdef0-9\.]+):(\d{1,5})(?:[\s\b]|$)/g;
+				push @{$update}, \%line;
+			}
+		}
+		close(PH) || die "Unable to close file handle PH for command '$cmd': $!\n";
+		$update_cache{netstat} = $update;
+	}
+
+	return $update;
+}
+
+
+
+sub net_connections_ports {
+	my $cmd = select_cmd(qw(/bin/netstat /usr/bin/netstat /usr/sbin/netstat));
+	return unless -f $cmd;
 	$cmd .= ' -na';
 
 	my %update = ();
-
-	open(PH,'-|',$cmd) || die "Unable to open file handle for command '$cmd': $!\n";
-	while (local $_ = <PH>) {
-		if (my ($proto,$state) = $_ =~ /^(tcp[46]?|udp[46]?|raw)\s+.+\s+([A-Z_]+)\s*$/) {
-			$update{$state}++;
+	my %listening_ports;
+	for (@{_parse_netstat($cmd)}) {
+		if ($_->{state} =~ /listen/i && defined $_->{local_port}) {
+			$listening_ports{"$_->{proto}:$_->{local_port}"} = 1;
+			$update{"$_->{proto}_$_->{local_port}"} = 0;
 		}
 	}
-	close(PH) || warn "Unable to close file handle for command '$cmd': $!\n";
+	for (@{_parse_netstat($cmd)}) {
+		next if !defined $_->{state} || !defined $_->{remote_port};
+		$update{"$_->{proto}_$_->{remote_port}"}++ if exists $listening_ports{"$_->{proto}:$_->{remote_port}"};
+	}
 
 	return %update;
 }
 
+
+
+sub net_connections {
+	my $cmd = select_cmd(qw(/bin/netstat /usr/bin/netstat /usr/sbin/netstat));
+	return unless -f $cmd;
+	$cmd .= ' -na';
+
+	my %update = ();
+	for (@{_parse_netstat($cmd)}) {
+		$update{$_->{state}}++ if defined $_->{state};
+	}
+
+	return %update;
+}
+
+
+
 sub proc_filehandles {
-	return () unless -f '/proc/sys/fs/file-nr';
+	return unless -f '/proc/sys/fs/file-nr';
 	my %update = ();
 
 	open(FH,'<','/proc/sys/fs/file-nr') || die "Unable to open '/proc/sys/fs/file-nr': $!\n";
 	my $str = <FH>;
-	close(FH) || warn "Unable to close '/proc/sys/fs/file-nr': $!\n";
+	close(FH) || die "Unable to close '/proc/sys/fs/file-nr': $!\n";
 	@update{qw(Allocated Free Maximum)} = split(/\s+/,$str);
 	$update{Used} = $update{Allocated} - $update{Free};
 
@@ -575,7 +979,6 @@ sub proc_filehandles {
 }
 
 
-1;
 
 
 

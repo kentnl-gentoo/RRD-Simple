@@ -1,6 +1,6 @@
 ############################################################
 #
-#   $Id: Simple.pm 682 2006-06-24 22:58:27Z nicolaw $
+#   $Id: Simple.pm 756 2006-08-24 22:30:54Z nicolaw $
 #   RRD::Simple - Simple interface to create and store data in RRD files
 #
 #   Copyright 2005,2006 Nicola Worthington
@@ -23,21 +23,21 @@ package RRD::Simple;
 # vim:ts=4:sw=4:tw=78
 
 use strict;
-use Exporter;
+require Exporter;
 use RRDs;
 use Carp qw(croak cluck confess carp);
-use File::Spec;
+use File::Spec qw();
 use File::Basename qw(fileparse dirname basename);
 
 use vars qw($VERSION $DEBUG $DEFAULT_DSTYPE
 			 @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '1.39' || sprintf('%d', q$Revision: 682 $ =~ /(\d+)/g);
+$VERSION = '1.40' || sprintf('%d', q$Revision: 756 $ =~ /(\d+)/g);
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
-@EXPORT_OK = qw(create update last_update graph info
-				add_source sources retention_period);
+@EXPORT_OK = qw(create update last_update graph info rename_source
+				add_source sources retention_period last_values);
 %EXPORT_TAGS = (all => \@EXPORT_OK);
 
 $DEBUG ||= $ENV{DEBUG} ? 1 : 0;
@@ -139,10 +139,10 @@ sub create {
 
 	# Pass to RRDs for execution
 	my @rtn = RRDs::create($rrdfile, @def);
-	my $error = RRDs::error;
+	my $error = RRDs::error();
 	croak($error) if $error;
 	DUMP('RRDs::info',RRDs::info($rrdfile));
-	return @rtn;
+	return wantarray ? @rtn : \@rtn;
 }
 
 
@@ -209,7 +209,7 @@ sub update {
 			} else {
 				# Decide what DS type and heartbeat to use
 				my $info = RRDs::info($rrdfile);
-				my $error = RRDs::error;
+				my $error = RRDs::error();
 				croak($error) if $error;
 
 				my %dsTypes;
@@ -234,9 +234,9 @@ sub update {
 
 	# Pass to RRDs to execute the update
 	my @rtn = RRDs::update($rrdfile, @def);
-	my $error = RRDs::error;
+	my $error = RRDs::error();
 	croak($error) if $error;
-	return @rtn;
+	return wantarray ? @rtn : \@rtn;
 }
 
 
@@ -254,7 +254,7 @@ sub last {
 	TRACE("Using filename: $rrdfile");
 
 	my $last = RRDs::last($rrdfile);
-	my $error = RRDs::error;
+	my $error = RRDs::error();
 	croak($error) if $error;
 	return $last;
 }
@@ -273,7 +273,7 @@ sub sources {
 	TRACE("Using filename: $rrdfile");
 
 	my $info = RRDs::info($rrdfile);
-	my $error = RRDs::error;
+	my $error = RRDs::error();
 	croak($error) if $error;
 
 	my @ds;
@@ -282,7 +282,7 @@ sub sources {
 			push @ds, $1;
 		}
 	}
-	return @ds;
+	return wantarray ? @ds : \@ds;
 }
 
 
@@ -410,7 +410,31 @@ sub graph {
 	}
 
 #	return @rtn;
-	return %rtn;
+	return wantarray ? %rtn : \%rtn;
+}
+
+
+# Rename an existing data source
+sub rename_source {
+	my $self = shift;
+	unless (ref $self && UNIVERSAL::isa($self, __PACKAGE__)) {
+		unshift @_, $self unless $self eq __PACKAGE__;
+		$self = new __PACKAGE__;
+	}
+
+	# Grab or guess the filename
+	my $rrdfile = @_ % 2 ? shift : _guess_filename();
+
+	my ($old,$new) = @_;
+	croak "No old data source name specified" unless defined $old;
+	croak "No new data source name specified" unless defined $new;
+	croak "Data source '$old' does not exist in RRD file $rrdfile"
+		unless grep($_ eq $old, $self->sources($rrdfile));
+
+	my @rtn = RRDs::tune($rrdfile,'-r',"$old:$new");
+	my $error = RRDs::error();
+	croak($error) if $error;
+	return wantarray ? @rtn : \@rtn;
 }
 
 
@@ -448,7 +472,7 @@ sub last_values {
 	for my $rra (@{$info->{rra}}) {
 		$hasLastRRA++ if $rra->{cf} eq 'LAST';
 	}
-	return () if !$hasLastRRA;
+	return if !$hasLastRRA;
 
 	# What's the largest heartbeat in the RRD file data sources?
 	my $largestHeartbeat = 1;
@@ -463,7 +487,7 @@ sub last_values {
 
 	# Pass to RRDs to execute
 	my ($time,$heartbeat,$ds,$data) = RRDs::fetch($rrdfile, @def);
-	my $error = RRDs::error;
+	my $error = RRDs::error();
 	croak($error) if $error;
 
 	# Put it in to a nice easy format
@@ -482,7 +506,7 @@ sub last_values {
 	# in to an RRD, then I'll admit that this method exists and export
 	# it too.
 
-	return %rtn;
+	return wantarray ? %rtn : \%rtn;
 }
 
 
@@ -495,7 +519,7 @@ sub retention_period {
 	}
 
 	my $info = $self->info(@_);
-	return undef if !defined($info);
+	return if !defined($info);
 
 	my $duration = $info->{step};
 	for my $rra (@{$info->{rra}}) {
@@ -503,7 +527,7 @@ sub retention_period {
 		$duration = $secs if $secs > $duration;
 	}
 
-	return $duration;
+	return wantarray ? ($duration) : $duration;
 }
 
 
@@ -519,7 +543,7 @@ sub info {
 	my $rrdfile = @_ % 2 ? shift : _guess_filename();
 
 	my $info = RRDs::info($rrdfile);
-	my $error = RRDs::error;
+	my $error = RRDs::error();
 	croak($error) if $error;
 	DUMP('$info',$info);
 
@@ -546,11 +570,18 @@ sub _create_graph {
 	my $rrdfile = shift;
 	my $type = _valid_scheme(shift) || 'day';
 	my $cf = shift || 'AVERAGE';
+	my $command_regex = qr/^([VC]?DEF|G?PRINT|COMMENT|[HV]RULE\d*|LINE\d*|AREA|TICK|SHIFT|STACK):.+/;
 
 	my %param;
+	my @command_param;
 	while (my $k = shift) {
-		$k =~ s/_/-/g;
-		$param{lc($k)} = shift;
+		if ($k =~ /$command_regex/) {
+			push @command_param, $k;
+			shift;
+		} else {
+			$k =~ s/_/-/g;
+			$param{lc($k)} = shift;
+		}
 	}
 
 	# Specify some default values
@@ -678,8 +709,11 @@ sub _create_graph {
 	# Convert our parameters in to an RRDs friendly defenition
 	my @def;
 	while (my ($k,$v) = each %param) {
-		if (length($k) == 1) { $k = '-'.uc($k); }
-		else { $k = "--$k"; }
+		if (length($k) == 1) { # Short single character options
+			$k = '-'.uc($k);
+		} else { # Long options
+			$k = "--$k";
+		}
 		for my $v ((ref($v) eq 'ARRAY' ? @{$v} : ($v))) {
 			if (!defined $v || !length($v)) {
 				push @def, $k;
@@ -743,6 +777,7 @@ sub _create_graph {
 			push @cmd, sprintf('VDEF:%sMIN=%s,MINIMUM',$ds,$ds);
 			push @cmd, sprintf('VDEF:%sMAX=%s,MAXIMUM',$ds,$ds);
 			push @cmd, sprintf('VDEF:%sLAST=%s,LAST',$ds,$ds);
+			push @cmd, sprintf('VDEF:%sAVERAGE=%s,AVERAGE',$ds,$ds);
 			push @cmd, sprintf('PRINT:%sMIN:%s min %%1.2lf',$ds,$ds);
 			push @cmd, sprintf('PRINT:%sMAX:%s max %%1.2lf',$ds,$ds);
 			push @cmd, sprintf('PRINT:%sLAST:%s last %%1.2lf',$ds,$ds);
@@ -768,6 +803,9 @@ sub _create_graph {
 		}
 	}
 
+	# Push the post command defs on to the stack
+	push @cmd, @command_param;
+
 	# Add a comment stating when the graph was last updated
 	push @cmd, ('COMMENT:\s','COMMENT:\s','COMMENT:\s');
 	my $time = 'Last updated: '.localtime().'\r';
@@ -778,7 +816,7 @@ sub _create_graph {
 
 	# Generate the graph
 	my @rtn = RRDs::graph(@cmd);
-	my $error = RRDs::error;
+	my $error = RRDs::error();
 	croak($error) if $error;
 	return ($image,@rtn);
 }
@@ -889,12 +927,15 @@ sub _alt_graph_name {
 sub _add_source {
 	croak('Pardon?!') if ref $_[0];
 	my ($rrdfile,$ds,$dstype,$heartbeat,$rrdtool) = @_;
+	$rrdtool = '' unless defined $rrdtool;
 
 	require File::Copy;
 	require File::Temp;
 
 	# Generate an XML dump of the RRD file
-	my $tempXmlFile = File::Temp::tmpnam();
+	my ($tempXmlFileFH,$tempXmlFile) = File::Temp::tempfile();
+	croak "File::Temp::tempfile() failed to return a temporary filename"
+		unless defined $tempXmlFile;
 	TRACE("_add_source(): \$tempXmlFile = $tempXmlFile");
 
 	# Try the internal perl way first (portable)
@@ -903,7 +944,7 @@ sub _add_source {
 		# list by nicolaw/heds on 2006/01/08
 		if ($RRDs::VERSION >= 1.2013) {
 			my @rtn = RRDs::dump($rrdfile,$tempXmlFile);
-			my $error = RRDs::error;
+			my $error = RRDs::error();
 			croak($error) if $error;
 		}
 	};
@@ -911,7 +952,7 @@ sub _add_source {
 	# Do it the old fashioned way
 	if ($@ || !-f $tempXmlFile || (stat($tempXmlFile))[7] < 200) {
 		croak "rrdtool binary '$rrdtool' does not exist or is not executable"
-			unless (-f $rrdtool && -x $rrdtool);
+			if !defined $rrdtool || !-f $rrdtool || !-x $rrdtool;
 		_safe_exec(sprintf('%s dump %s > %s',$rrdtool,$rrdfile,$tempXmlFile));
 	}
 
@@ -1010,7 +1051,7 @@ EndDS
 	eval {
 		if ($RRDs::VERSION >= 1.0049) {
 			my @rtn = RRDs::restore($tempImportXmlFile,$new_rrdfile);
-			my $error = RRDs::error;
+			my $error = RRDs::error();
 			croak($error) if $error;
 		}
 	};
@@ -1039,7 +1080,7 @@ EndDS
 	}
 
 	# Return the new RRD filename
-	return $new_rrdfile;
+	return wantarray ? ($new_rrdfile) : $new_rrdfile;
 }
 
 
@@ -1103,7 +1144,7 @@ sub _guess_filename {
 
 sub TRACE {
 	return unless $DEBUG;
-	warn(shift());
+	carp(shift());
 }
 
 
@@ -1111,7 +1152,25 @@ sub DUMP {
 	return unless $DEBUG;
 	eval {
 		require Data::Dumper;
-		warn(shift().': '.Data::Dumper::Dumper(shift()));
+		$Data::Dumper::Indent = 2;
+		$Data::Dumper::Terse = 1;
+		carp(shift().': '.Data::Dumper::Dumper(shift()));
+	}
+}
+
+BEGIN {
+	eval "use RRDs";
+	if ($@) {
+		carp qq{
++-----------------------------------------------------------------------------+
+| ERROR! -- Could not load RRDs.pm                                            |
+|                                                                             |
+| RRD::Simple requires RRDs.pm (a part of RRDtool) in order to function. You  |
+| can download a copy of RRDtool from http://www.rrdtool.org. See the INSTALL |
+| document for more details.                                                  |
++-----------------------------------------------------------------------------+
+
+} unless $ENV{AUTOMATED_TESTING};
 	}
 }
 
@@ -1323,6 +1382,15 @@ source type.
 This method can be called internally by the C<update> method to automatically
 add missing data sources.
 
+=head2 rename_source
+
+ $rrd->rename_source($rrdfile, "old_datasource", "new_datasource");
+
+C<$rrdfile> is optional and will default to C<$0.rrd>. (Script basename with
+the file extension of .rrd).
+
+You may renames a data source in an existing RRD file using this method.
+
 =head2 graph
 
  my %rtn = $rrd->graph($rrdfile,
@@ -1532,6 +1600,7 @@ the extra effort of using the OO interface:
  last_update (synonym for the last() method)
  sources
  add_source
+ rename_source
  graph
  retention_period
  info
@@ -1546,17 +1615,22 @@ details.
 =head1 SEE ALSO
 
 L<RRDTool::OO>, L<RRDs>,
-L<http://www.rrdtool.org>, examples/*.pl
+L<http://www.rrdtool.org>, examples/*.pl,
+L<http://rrd.me.uk>
 
 =head1 VERSION
 
-$Id: Simple.pm 682 2006-06-24 22:58:27Z nicolaw $
+$Id: Simple.pm 756 2006-08-24 22:30:54Z nicolaw $
 
 =head1 AUTHOR
 
 Nicola Worthington <nicolaw@cpan.org>
 
 L<http://perlgirl.org.uk>
+
+If you like this software, why not show your appreciation by sending the
+author something nice from her
+L<Amazon wishlist|http://www.amazon.co.uk/gp/registry/1VZXC59ESWYK0?sort=priority>?
 
 =head1 COPYRIGHT
 

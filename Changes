@@ -1,3 +1,39 @@
+Version 1.40 - 24th August 2006
+    + Some small changes to POD.
+
+    + Updated version of examples/data_gathering/*
+      scripts, as currently used on http://rrd.me.uk
+
+    + Changed RRDs::error calls to RRDs::error().
+
+    + Changed debug warn() calls to carp().
+
+    + Explicitly import fewer symbols from other
+      modules.
+
+    + Added rename_source() method and associated
+      POD and unit test.
+
+    + Changed the graph() method to recognise use
+      of command (GPRINT,PRINT,COMMENT,VRULE,.. etc)
+      over options and flags, so that they will be
+      added to the graph definition after the
+      data sources have been defined.
+
+    + Added new unit tests for new functionality.
+      t/35average_hrule.t tests and demonstrates
+      how the changes to the graph() method can be
+      used.
+
+    + Fixed a bug where an uninitialised variable
+      could cause unexpected behaviour if you tried
+      to add a new data source using add_source()
+      method. This only manifested itself with an
+      versions of RRDs earlier than 1.2013, and
+      where the rrdtool binary is not installed or
+      the path to the rrdtool binary is unknown.
+
+
 Version 1.39 - 26th June 2006
     + Changed the return value from the graph()
       method to be a hash instead of an array, so

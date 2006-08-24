@@ -1,4 +1,4 @@
-# $Id: 22last_value.t 610 2006-06-13 16:51:43Z nicolaw $
+# $Id: 22last_value.t 739 2006-08-20 19:55:00Z nicolaw $
 
 my $rrdfile = -d 't' ? 't/22test.rrd' : '22test.rrd';
 unlink $rrdfile if -f $rrdfile;
@@ -27,7 +27,8 @@ ok($rrd->create($rrdfile,'day',
 
 my $lastValue = 0;
 for (my $t = $start; $t <= $end; $t += 60) {
-	$lastValue = int(rand(999));
+	#$lastValue = int(rand(999));
+	$lastValue = 100;
 	ok($rrd->update($rrdfile,$t,
 			foo => $lastValue,
 			bar => $lastValue+100
@@ -46,7 +47,7 @@ my %rtn;
 ok(%rtn = $rrd->last_values($rrdfile),'last_values');
 
 SKIP: {
-	skip "last_values() method not yet completed", 2;
+#	skip "last_values() method not yet completed", 2;
 	ok($rtn{foo} == $lastValue, "$rtn{foo} == $lastValue (foo)");
 	ok($rtn{bar} == ($lastValue + 100), "$rtn{bar} == ($lastValue + 100) (bar)");
 }

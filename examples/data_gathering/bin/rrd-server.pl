@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: rrd-server.pl 693 2006-06-26 19:11:42Z nicolaw $
+#   $Id: rrd-server.pl 733 2006-08-01 18:43:09Z nicolaw $
 #   rrd-server.pl - Data gathering script for RRD::Simple
 #
 #   Copyright 2006 Nicola Worthington
@@ -50,7 +50,7 @@ use File::Path qw();
 use Config::General qw();
 use vars qw($VERSION);
 
-$VERSION = '1.39' || sprintf('%d', q$Revision: 693 $ =~ /(\d+)/g);
+$VERSION = '1.39' || sprintf('%d', q$Revision: 733 $ =~ /(\d+)/g);
 
 # Get command line options
 my %opt = ();
@@ -149,9 +149,11 @@ sub graph_def {
 	my $rtn = {};
 	for (keys %{$gdefs->{graph}}) {
 		my $graph_key = qr(^$_$);
-		if ($graph =~ /$graph_key/) {
+		if (my ($var) = $graph =~ /$graph_key/) {
 			$rtn = { %{$gdefs->{graph}->{$_}} };
-			my ($var) = $graph =~ /_([^_]+)$/;
+			unless (defined $var && "$var" ne "1") {
+				($var) = $graph =~ /_([^_]+)$/;
+			}
 			for my $key (keys %{$rtn}) {
 				$rtn->{$key} =~ s/\$1/$var/g;
 			}
@@ -284,7 +286,7 @@ sub display_help {
 
 # Display version
 sub display_version {
-	print "$0 version $VERSION ".'($Id: rrd-server.pl 693 2006-06-26 19:11:42Z nicolaw $)'."\n";
+	print "$0 version $VERSION ".'($Id: rrd-server.pl 733 2006-08-01 18:43:09Z nicolaw $)'."\n";
 }
 
 sub key_ready {
@@ -405,6 +407,8 @@ __DATA__
 ^apache_status$	ReqPerSec	DERIVE	0	-
 ^apache_status$	BytesPerSec	DERIVE	0	-
 ^apache_logs$	*	DERIVE	0	-
+
+^db_mysql_activity$	*	DERIVE	0	-
 
 __END__
 

@@ -158,6 +158,14 @@ METHODS
     This method can be called internally by the "update" method to
     automatically add missing data sources.
 
+  rename_source
+     $rrd->rename_source($rrdfile, "old_datasource", "new_datasource");
+
+    $rrdfile is optional and will default to "$0.rrd". (Script basename with
+    the file extension of .rrd).
+
+    You may renames a data source in an existing RRD file using this method.
+
   graph
      my %rtn = $rrd->graph($rrdfile,
              destination => "/path/to/write/graph/images",
@@ -344,6 +352,7 @@ EXPORTS
      last_update (synonym for the last() method)
      sources
      add_source
+     rename_source
      graph
      retention_period
      info
@@ -355,15 +364,19 @@ EXPORTS
     See the examples and unit tests in this distribution for more details.
 
 SEE ALSO
-    RRDTool::OO, RRDs, <http://www.rrdtool.org>, examples/*.pl
+    RRDTool::OO, RRDs, <http://www.rrdtool.org>, examples/*.pl,
+    <http://rrd.me.uk>
 
 VERSION
-    $Id: Simple.pm 682 2006-06-24 22:58:27Z nicolaw $
+    $Id: Simple.pm 756 2006-08-24 22:30:54Z nicolaw $
 
 AUTHOR
     Nicola Worthington <nicolaw@cpan.org>
 
     <http://perlgirl.org.uk>
+
+    If you like this software, why not show your appreciation by sending the
+    author something nice from her Amazon wishlist?
 
 COPYRIGHT
     Copyright 2005,2006 Nicola Worthington.

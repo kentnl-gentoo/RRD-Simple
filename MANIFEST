@@ -18,6 +18,8 @@ examples/data_gathering/cgi-bin/rrd-server.cgi
 examples/data_gathering/etc/create.defs
 examples/data_gathering/etc/graph.defs
 examples/data_gathering/etc/rrd-httpd.conf
+examples/data_gathering/etc/rrd.me.uk.conf
+examples/data_gathering/etc/xinetd-rrd-client.conf
 examples/data_gathering/README
 examples/df.pl
 examples/disk-capacity-daily.png
@@ -56,10 +58,12 @@ t/23graph.t
 t/24retention_period.t
 t/25info.t
 t/26add_source.t
+t/27rename_source.t
 t/30assume_rrd_filename.t
 t/31create_assume_rrd_filename.t
 t/32exported_function_interface.t
 t/33correct_spelling.t
 t/34populate_test_data.t
+t/35average_hrule.t
 t/answers.pl
 TODO

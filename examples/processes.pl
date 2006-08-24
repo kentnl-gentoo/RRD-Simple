@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: processes.pl 633 2006-06-15 17:53:47Z nicolaw $
+#   $Id: processes.pl 699 2006-06-27 19:03:54Z nicolaw $
 #   processes.pl - Example script bundled as part of RRD::Simple
 #
 #   Copyright 2006 Nicola Worthington
@@ -27,7 +27,7 @@ my %update = ();
 if (-f '/bin/ps' && -x '/bin/ps') {
 	open(PH,'-|','/bin/ps -eo pid,s') || die $!;
 	while (local $_ = <PH>) {
-		if (/^\d+\s+(\w+)\s*$/) {
+		if (/^\s*\d+\s+(\w+)\s*$/) {
 			$update{$1}++;
 		}
 	}
