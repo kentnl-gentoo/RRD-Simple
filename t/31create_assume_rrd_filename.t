@@ -1,4 +1,4 @@
-# $Id: 31create_assume_rrd_filename.t 610 2006-06-13 16:51:43Z nicolaw $
+# $Id: 31create_assume_rrd_filename.t 945 2007-02-11 14:43:10Z nicolaw $
 
 my $rrdfile = -d 't' ? 't/31create_assume_rrd_filename.rrd' : '31create_assume_rrd_filename.rrd';
 unlink $rrdfile if -f $rrdfile;

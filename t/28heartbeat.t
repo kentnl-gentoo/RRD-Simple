@@ -1,6 +1,6 @@
-# $Id: 27rename_source.t 945 2007-02-11 14:43:10Z nicolaw $
+# $Id: 28heartbeat.t 945 2007-02-11 14:43:10Z nicolaw $
 
-my $rrdfile = -d 't' ? 't/27test.rrd' : '27test.rrd';
+my $rrdfile = -d 't' ? 't/28test.rrd' : '28test.rrd';
 unlink $rrdfile if -f $rrdfile;
 
 use strict;

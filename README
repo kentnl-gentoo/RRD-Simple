@@ -69,7 +69,9 @@ DESCRIPTION
 METHODS
   new
      my $rrd = RRD::Simple->new(
-             rrdtool => "/usr/local/rrdtool-1.2.11/bin/rrdtool"
+             rrdtool => "/usr/local/rrdtool-1.2.11/bin/rrdtool",
+             cf => [ qw(AVERAGE MAX) ],
+             default_dstype => "GAUGE",
          );
 
     The "rrdtool" parameter is optional. It specifically defines where the
@@ -81,6 +83,15 @@ METHODS
     under certain circumstances. The "add_source" method may also be called
     automatically by the "update" method, if data point values for a
     previously undefined data source are provided for insertion.
+
+    The "cf" parameter is optional, and defaults to AVERAGE and MAX. The
+    "cf" paramater defines which consolidation functions are used in round
+    robin archives (RRAs) when creating new RRD files.
+
+    The "default_dstype" parameter is optional. Specifying the default data
+    source type (DST) through the new() method allows the DST to be
+    localised to the $rrd object instance rather than be global to the
+    RRD::Simple package. See $RRD::Simple::DEFAULT_DSTYPE.
 
   create
      $rrd->create($rrdfile, $period,
@@ -170,6 +181,7 @@ METHODS
      my %rtn = $rrd->graph($rrdfile,
              destination => "/path/to/write/graph/images",
              basename => "graph_basename",
+             timestamp => "both", # graph, rrd, both or none
              sources => [ qw(source_name1 source_name2 source_name3) ],
              source_colors => [ qw(ff0000 aa3333 000000) ],
              source_labels => [ ("My Source 1","My Source Two","Source 3") ],
@@ -208,6 +220,21 @@ METHODS
 
         The default file format is "png", but this can be explicitly
         specified using the standard RRDs options. (See below).
+
+    timestamp
+         my %rtn = $rrd->graph($rrdfile,
+                 timestamp => "graph", # graph, rrd, both or none
+             );
+
+        The "timestamp" parameter is optional, but will default to "graph".
+        This parameter specifies which "last upated" timestamps should be
+        added to the bottom right hand corner of the graph.
+
+        Valid values are: "graph" - the timestamp of when the graph was last
+        updated will be used, "rrd" - the timestamp of when the RRD file was
+        last updated will be used, "both" - both the timestamps of when the
+        graph and RRD file were last updated will be used, "none" - no
+        timestamp will be used.
 
     sources
         The "sources" parameter is optional. This parameter should be an
@@ -325,6 +352,16 @@ METHODS
     This method will return a complex data structure containing details
     about the RRD file, including RRA and data source information.
 
+  heartbeat
+     my $heartbeat = $rrd->heartbeat($rrdfile, "dsname");
+     my @rtn = $rrd->heartbeat($rrdfile, "dsname", 600);
+
+    $rrdfile is optional and will default to "$0.rrd". (Script basename with
+    the file extension of .rrd).
+
+    This method will return the current heartbeat of a data source, or set a
+    new heartbeat of a data source.
+
 VARIABLES
   $RRD::Simple::DEBUG
     Debug and trace information will be printed to STDERR if this variable
@@ -356,6 +393,7 @@ EXPORTS
      graph
      retention_period
      info
+     heartbeat
 
     The tag "all" is available to easily export everything:
 
@@ -365,10 +403,11 @@ EXPORTS
 
 SEE ALSO
     RRDTool::OO, RRDs, <http://www.rrdtool.org>, examples/*.pl,
+    <http://search.cpan.org/src/NICOLAW/RRD-Simple-1.41/examples/>,
     <http://rrd.me.uk>
 
 VERSION
-    $Id: Simple.pm 756 2006-08-24 22:30:54Z nicolaw $
+    $Id: Simple.pm 945 2007-02-11 14:43:10Z nicolaw $
 
 AUTHOR
     Nicola Worthington <nicolaw@cpan.org>
@@ -376,10 +415,11 @@ AUTHOR
     <http://perlgirl.org.uk>
 
     If you like this software, why not show your appreciation by sending the
-    author something nice from her Amazon wishlist?
+    author something nice from her Amazon wishlist? (
+    http://www.amazon.co.uk/gp/registry/1VZXC59ESWYK0?sort=priority )
 
 COPYRIGHT
-    Copyright 2005,2006 Nicola Worthington.
+    Copyright 2005,2006,2007 Nicola Worthington.
 
     This software is licensed under The Apache Software License, Version
     2.0.

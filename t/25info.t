@@ -1,4 +1,4 @@
-# $Id: 25info.t 610 2006-06-13 16:51:43Z nicolaw $
+# $Id: 25info.t 945 2007-02-11 14:43:10Z nicolaw $
 
 my $rrdfile = -d 't' ? 't/25test.rrd' : '25test.rrd';
 unlink $rrdfile if -f $rrdfile;

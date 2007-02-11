@@ -1,4 +1,4 @@
-# $Id: 20compile.t 610 2006-06-13 16:51:43Z nicolaw $
+# $Id: 20compile.t 945 2007-02-11 14:43:10Z nicolaw $
 
 chdir('t') if -d 't';
 

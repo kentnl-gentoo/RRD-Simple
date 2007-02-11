@@ -1,4 +1,4 @@
-# $Id: 33correct_spelling.t 610 2006-06-13 16:51:43Z nicolaw $
+# $Id: 33correct_spelling.t 945 2007-02-11 14:43:10Z nicolaw $
 
 my $rrdfile = -d 't' ? 't/33test.rrd' : '33test.rrd';
 unlink $rrdfile if -f $rrdfile;

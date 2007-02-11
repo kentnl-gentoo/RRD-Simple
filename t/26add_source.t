@@ -1,4 +1,4 @@
-# $Id: 26add_source.t 742 2006-08-24 21:07:31Z nicolaw $
+# $Id: 26add_source.t 945 2007-02-11 14:43:10Z nicolaw $
 
 my $rrdfile = -d 't' ? 't/26test.rrd' : '26test.rrd';
 unlink $rrdfile if -f $rrdfile;

@@ -1,4 +1,4 @@
-# $Id: 35last_value.t 739 2006-08-20 19:55:00Z nicolaw $
+# $Id: 35average_hrule.t 945 2007-02-11 14:43:10Z nicolaw $
 
 my $rrdfile = -d 't' ? 't/35test.rrd' : '35test.rrd';
 unlink $rrdfile if -f $rrdfile;

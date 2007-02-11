@@ -1,4 +1,4 @@
-# $Id: 23graph.t 676 2006-06-24 18:19:07Z nicolaw $
+# $Id: 23graph.t 945 2007-02-11 14:43:10Z nicolaw $
 
 chdir('t') if -d 't';
 my $rrdfile = -d 't' ? 't/23test.rrd' : '23test.rrd';

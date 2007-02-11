@@ -1,6 +1,6 @@
 ---
 name: RRD-Simple
-version: 1.40
+version: 1.41
 author:
   - Nicola Worthington <nicolaw@cpan.org>
 abstract: Simple interface to create and store data in RRD files
@@ -11,6 +11,7 @@ requires:
   File::Copy: 0
   File::Spec: 0
   File::Temp: 0
+  POSIX: 0
   RRDs: 0
 recommends:
   Test::Deep: 0.093
@@ -24,8 +25,10 @@ conflicts:
 provides:
   RRD::Simple:
     file: lib/RRD/Simple.pm
-    version: 1.40
+    version: 1.41
+  RRD::Simple::Examples:
+    file: lib/RRD/Simple/Examples.pm
   RRD::Simple::_Colour:
     file: lib/RRD/Simple.pm
-    version: 1.40
+    version: 1.41
 generated_by: Module::Build version 0.2611

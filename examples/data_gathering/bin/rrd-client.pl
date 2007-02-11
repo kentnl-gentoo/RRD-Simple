@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: rrd-client.pl 747 2006-08-24 21:29:07Z nicolaw $
+#   $Id: rrd-client.pl 945 2007-02-11 14:43:10Z nicolaw $
 #   rrd-client.pl - Data gathering script for RRD::Simple
 #
 #   Copyright 2006 Nicola Worthington
@@ -44,7 +44,7 @@ use strict;
 use warnings;
 use vars qw($VERSION);
 
-$VERSION = '1.40' || sprintf('%d', q$Revision: 747 $ =~ /(\d+)/g);
+$VERSION = '1.40' || sprintf('%d', q$Revision: 945 $ =~ /(\d+)/g);
 $ENV{PATH} = '/bin:/usr/bin';
 delete @ENV{qw(IFS CDPATH ENV BASH_ENV)};
 
@@ -53,14 +53,15 @@ delete @ENV{qw(IFS CDPATH ENV BASH_ENV)};
 my @probes = qw(
 		cpu_utilisation cpu_loadavg cpu_temp cpu_interrupts
 		hdd_io hdd_temp hdd_capacity
-		mem_usage mem_swap_activity
+		mem_usage mem_swap_activity mem_proc_largest
 		proc_threads proc_state proc_filehandles
 		apache_status apache_logs
 		misc_uptime misc_users misc_ipmi_temp
-		db_mysql_activity
+		db_mysql_activity db_mysql_replication
 		mail_exim_queue mail_postfix_queue mail_sendmail_queue
-		net_traffic net_connections net_ping_host net_connections_ports
+		net_traffic net_connections net_ping_host
 	);
+# net_connections_ports
 
 
 # Get command line options
@@ -141,7 +142,7 @@ sub display_help {
 
 # Display version
 sub display_version {
-	print "$0 version $VERSION ".'($Id: rrd-client.pl 747 2006-08-24 21:29:07Z nicolaw $)'."\n";
+	print "$0 version $VERSION ".'($Id: rrd-client.pl 945 2007-02-11 14:43:10Z nicolaw $)'."\n";
 }
 
 
@@ -178,7 +179,7 @@ sub basic_http {
 		# Send the HTTP request
 		print SOCK "$method $path HTTP/1.1\n";
 		print SOCK "Host: $host". ("$port" ne "80" ? ":$port" : '') ."\n";
-		print SOCK "User-Agent: $0 version $VERSION ".'($Id: rrd-client.pl 747 2006-08-24 21:29:07Z nicolaw $)'."\n";
+		print SOCK "User-Agent: $0 version $VERSION ".'($Id: rrd-client.pl 945 2007-02-11 14:43:10Z nicolaw $)'."\n";
 		if ($post && $method eq 'POST') {
 			print SOCK "Content-Length: ". length($post) ."\n";
 			print SOCK "Content-Type: application/x-www-form-urlencoded\n";
@@ -251,6 +252,28 @@ sub net_ping_host {
 
 
 
+sub mem_proc_largest {
+	my $cmd = select_cmd(qw(/bin/ps /usr/bin/ps));
+	return unless -f $cmd;
+	$cmd .= ' -eo vsize';
+
+	my %update = ();
+	open(PH,'-|',$cmd) || die "Unable to open file handle PH for command '$cmd': $!\n";
+	while (local $_ = <PH>) {
+		if (/(\d+)/) {
+			my $kb = $1;
+			$update{LargestProc} = $kb if !defined $update{LargestProc} ||
+				(defined $update{LargestProc} && $kb > $update{LargestProc});
+		}
+	}
+	close(PH) || die "Unable to close file handle PH for command '$cmd': $!\n";
+	$update{LargestProc} *= 1024 if defined $update{LargestProc};
+
+	return %update;
+}
+
+
+
 sub proc_threads {
 	return unless ($^O eq 'linux' && `/bin/uname -r 2>&1` =~ /^2\.6\./) ||
 					($^O eq 'solaris' && `/bin/uname -r 2>&1` =~ /^5\.9/);
@@ -276,7 +299,7 @@ sub mail_exim_queue {
 	my $spooldir = '/var/spool/exim/input';
 	return unless -d $spooldir && -x $spooldir && -r $spooldir;
 
-	local %mail::exim::queue::update = ();
+	local %mail::exim::queue::update = (Messages => 0);
 	require File::Find;
 	File::Find::find({wanted => sub {
 			my ($dev,$ino,$mode,$nlink,$uid,$gid);
@@ -293,7 +316,7 @@ sub mail_sendmail_queue {
 	my $spooldir = '/var/spool/mqueue';
 	return unless -d $spooldir && -x $spooldir && -r $spooldir;
 
-	local %mail::sendmail::queue::update = ();
+	local %mail::sendmail::queue::update = (Messages => 0);
 	require File::Find;
 	File::Find::find({wanted => sub {
 			my ($dev,$ino,$mode,$nlink,$uid,$gid);
@@ -318,7 +341,7 @@ sub mail_postfix_queue {
 		return unless -d $spooldir && -x $spooldir && -r $spooldir;
 	}
 
-	local %mail::postfix::queue::update = ();
+	local %mail::postfix::queue::update = (Messages => 0);
 	require File::Find;
 	File::Find::find({wanted => sub {
 			my ($dev,$ino,$mode,$nlink,$uid,$gid);
@@ -372,6 +395,26 @@ sub db_mysql_activity {
 		}
 		$sth->finish();
 		$dbh->disconnect();
+	};
+
+	return %update;
+}
+
+
+
+sub db_mysql_replication {
+	my %update = ();
+	return %update unless (defined DB_MYSQL_DSN && defined DB_MYSQL_USER);
+
+	eval {
+		require DBI;
+		my $dbh = DBI->connect(DB_MYSQL_DSN,DB_MYSQL_USER,DB_MYSQL_PASS);
+		my $sth = $dbh->prepare('SHOW SLAVE STATUS');
+		$sth->execute();
+		my $row = $sth->fetchrow_hashref;
+		$sth->finish();
+		$dbh->disconnect();
+		$update{SecondsBehind} = $row->{Seconds_Behind_Master} || 0;
 	};
 
 	return %update;
