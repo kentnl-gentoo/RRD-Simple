@@ -6,11 +6,11 @@ SYNOPSIS
      use RRD::Simple ();
      
  # Create an interface object
-     my $rrd = RRD::Simple->new();
+     my $rrd = RRD::Simple->new( file => "myfile.rrd" );
      
  # Create a new RRD file with 3 data sources called
      # bytesIn, bytesOut and faultsPerSec.
-     $rrd->create("myfile.rrd",
+     $rrd->create(
                  bytesIn => "GAUGE",
                  bytesOut => "GAUGE",
                  faultsPerSec => "COUNTER"
@@ -18,7 +18,7 @@ SYNOPSIS
      
  # Put some arbitary data values in the RRD file for same
      # 3 data sources called bytesIn, bytesOut and faultsPerSec.
-     $rrd->update("myfile.rrd",
+     $rrd->update(
                  bytesIn => 10039,
                  bytesOut => 389,
                  faultsPerSec => 0.4
@@ -27,7 +27,7 @@ SYNOPSIS
  # Generate graphs:
      # /var/tmp/myfile-daily.png, /var/tmp/myfile-weekly.png
      # /var/tmp/myfile-monthly.png, /var/tmp/myfile-annual.png
-     my %rtn = $rrd->graph("myfile.rrd",
+     my %rtn = $rrd->graph(
                  destination => "/var/tmp",
                  title => "Network Interface eth0",
                  vertical_label => "Bytes/Faults",
@@ -36,17 +36,17 @@ SYNOPSIS
      printf("Created %s\n",join(", ",map { $rtn{$_}->[0] } keys %rtn));
 
      # Return information about an RRD file
-     my $info = $rrd->info("myfile.rrd");
+     my $info = $rrd->info;
      require Data::Dumper;
      print Data::Dumper::Dumper($info);
 
      # Get unixtime of when RRD file was last updated
-     my $lastUpdated = $rrd->last("myfile.rrd");
+     my $lastUpdated = $rrd->last;
      print "myfile.rrd was last updated at " .
            scalar(localtime($lastUpdated)) . "\n";
      
  # Get list of data source names from an RRD file
-     my @dsnames = $rrd->sources("myfile.rrd");
+     my @dsnames = $rrd->sources;
      print "Available data sources: " . join(", ", @dsnames) . "\n";
      
  # And for the ultimately lazy, you could create and update
@@ -69,10 +69,16 @@ DESCRIPTION
 METHODS
   new
      my $rrd = RRD::Simple->new(
+             file => "myfile.rrd",
              rrdtool => "/usr/local/rrdtool-1.2.11/bin/rrdtool",
              cf => [ qw(AVERAGE MAX) ],
              default_dstype => "GAUGE",
          );
+
+    The "file" parameter is currently optional but will become mandatory in
+    future releases, replacing the optional $rrdfile parameters on
+    subsequent methods. This parameter specifies the RRD filename to be
+    used.
 
     The "rrdtool" parameter is optional. It specifically defines where the
     "rrdtool" binary can be found. If not specified, the module will search
@@ -85,7 +91,7 @@ METHODS
     previously undefined data source are provided for insertion.
 
     The "cf" parameter is optional, and defaults to AVERAGE and MAX. The
-    "cf" paramater defines which consolidation functions are used in round
+    "cf" parameter defines which consolidation functions are used in round
     robin archives (RRAs) when creating new RRD files.
 
     The "default_dstype" parameter is optional. Specifying the default data
@@ -100,14 +106,21 @@ METHODS
              source_name => "TYPE"
          );
 
-    $rrdfile is optional and will default to "$0.rrd". (Script basename with
-    the file extension of .rrd).
+    $rrdfile is optional and will default to using the RRD filename
+    specified by the "new" constructor method, or "$0.rrd". (Script basename
+    with the file extension of .rrd).
 
     $period is optional and will default to "year". Valid options are "day",
-    "week", "month", "year", "3years" and "mrtg". Specifying a retention
-    period value will change how long data will be retained for within the
-    RRD file. The "mrtg" scheme will try and mimic the retention period used
-    by MRTG (<http://people.ee.ethz.ch/~oetiker/webtools/mrtg/>.
+    "week", "month", "year", "3years" and "mrtg". Specifying a data
+    retention period value will change how long data will be retained for
+    within the RRD file. The "mrtg" scheme will try and mimic the data
+    retention period used by MRTG v2.13.2
+    (<http://people.ee.ethz.ch/~oetiker/webtools/mrtg/>.
+
+    The "mrtg" data retention period uses a data stepping resolution of 300
+    seconds (5 minutes) and heartbeat of 600 seconds (10 minutes), whereas
+    all the other data retention periods use a data stepping resolution of
+    60 seconds (1 minute) and heartbeat of 120 seconds (2 minutes).
 
     RRD::Simple will croak and die if you try to create an RRD file that
     already exists.
@@ -119,8 +132,9 @@ METHODS
              source_name => "VALUE"
          );
 
-    $rrdfile is optional and will default to "$0.rrd". (Script basename with
-    the file extension of .rrd).
+    $rrdfile is optional and will default to using the RRD filename
+    specified by the "new" constructor method, or "$0.rrd". (Script basename
+    with the file extension of .rrd).
 
     $unixtime is optional and will default to "time()" (the current
     unixtime). Specifying this value will determine the date and time that
@@ -145,22 +159,25 @@ METHODS
   last
      my $unixtime = $rrd->last($rrdfile);
 
-    $rrdfile is optional and will default to "$0.rrd". (Script basename with
-    the file extension of .rrd).
+    $rrdfile is optional and will default to using the RRD filename
+    specified by the "new" constructor method, or "$0.rrd". (Script basename
+    with the file extension of .rrd).
 
   sources
      my @sources = $rrd->sources($rrdfile);
 
-    $rrdfile is optional and will default to "$0.rrd". (Script basename with
-    the file extension of .rrd).
+    $rrdfile is optional and will default to using the RRD filename
+    specified by the "new" constructor method, or "$0.rrd". (Script basename
+    with the file extension of .rrd).
 
   add_source
      $rrd->add_source($rrdfile,
              source_name => "TYPE"
          );
 
-    $rrdfile is optional and will default to "$0.rrd". (Script basename with
-    the file extension of .rrd).
+    $rrdfile is optional and will default to using the RRD filename
+    specified by the "new" constructor method, or "$0.rrd". (Script basename
+    with the file extension of .rrd).
 
     You may add a new data source to an existing RRD file using this method.
     Only one data source name can be added at a time. You must also specify
@@ -172,8 +189,9 @@ METHODS
   rename_source
      $rrd->rename_source($rrdfile, "old_datasource", "new_datasource");
 
-    $rrdfile is optional and will default to "$0.rrd". (Script basename with
-    the file extension of .rrd).
+    $rrdfile is optional and will default to using the RRD filename
+    specified by the "new" constructor method, or "$0.rrd". (Script basename
+    with the file extension of .rrd).
 
     You may renames a data source in an existing RRD file using this method.
 
@@ -193,8 +211,9 @@ METHODS
              rrd_graph_option => "value"
          );
 
-    $rrdfile is optional and will default to "$0.rrd". (Script basename with
-    the file extension of .rrd).
+    $rrdfile is optional and will default to using the RRD filename
+    specified by the "new" constructor method, or "$0.rrd". (Script basename
+    with the file extension of .rrd).
 
     Graph options specific to RRD::Simple are:
 
@@ -337,8 +356,9 @@ METHODS
   retention_period
      my $seconds = $rrd->retention_period($rrdfile);
 
-    $rrdfile is optional and will default to "$0.rrd". (Script basename with
-    the file extension of .rrd).
+    $rrdfile is optional and will default to using the RRD filename
+    specified by the "new" constructor method, or "$0.rrd". (Script basename
+    with the file extension of .rrd).
 
     This method will return a maximum period of time (in seconds) that the
     RRD file will store data for.
@@ -346,8 +366,9 @@ METHODS
   info
      my $info = $rrd->info($rrdfile);
 
-    $rrdfile is optional and will default to "$0.rrd". (Script basename with
-    the file extension of .rrd).
+    $rrdfile is optional and will default to using the RRD filename
+    specified by the "new" constructor method, or "$0.rrd". (Script basename
+    with the file extension of .rrd).
 
     This method will return a complex data structure containing details
     about the RRD file, including RRA and data source information.
@@ -356,8 +377,9 @@ METHODS
      my $heartbeat = $rrd->heartbeat($rrdfile, "dsname");
      my @rtn = $rrd->heartbeat($rrdfile, "dsname", 600);
 
-    $rrdfile is optional and will default to "$0.rrd". (Script basename with
-    the file extension of .rrd).
+    $rrdfile is optional and will default to using the RRD filename
+    specified by the "new" constructor method, or "$0.rrd". (Script basename
+    with the file extension of .rrd).
 
     This method will return the current heartbeat of a data source, or set a
     new heartbeat of a data source.
@@ -407,7 +429,7 @@ SEE ALSO
     <http://rrd.me.uk>
 
 VERSION
-    $Id: Simple.pm 945 2007-02-11 14:43:10Z nicolaw $
+    $Id: Simple.pm 956 2007-02-27 18:06:01Z nicolaw $
 
 AUTHOR
     Nicola Worthington <nicolaw@cpan.org>

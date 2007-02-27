@@ -43,7 +43,7 @@ examples/vmstat-cpu-daily.png
 examples/vmstat.pl
 INSTALL
 lib/RRD/Simple.pm
-lib/RRD/Simple/Examples.pm
+lib/RRD/Simple/Examples.pod
 LICENSE
 Makefile.PL
 MANIFEST			This list of files
@@ -54,6 +54,7 @@ t/10pod.t
 t/11pod_coverage.t
 t/20compile.t
 t/21synopsis.t
+t/21synopsis_old.t
 t/22last_value.t
 t/23graph.t
 t/24retention_period.t
