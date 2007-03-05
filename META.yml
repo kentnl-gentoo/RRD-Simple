@@ -1,8 +1,8 @@
 ---
 name: RRD-Simple
-version: 1.42
+version: 1.43
 author:
-  - Nicola Worthington <nicolaw@cpan.org>
+  - 'Nicola Worthington <nicolaw@cpan.org>'
 abstract: Simple interface to create and store data in RRD files
 license: open_source
 requires:
@@ -13,20 +13,20 @@ requires:
   File::Temp: 0
   POSIX: 0
   RRDs: 0
-recommends:
-  Test::Deep: 0.093
-  Test::Pod: 1.2
-  Test::Pod::Coverage: 1.06
 build_requires:
   Test: 0
   Test::More: 0
 conflicts:
   RRDTool::Managed: 0
+recommends:
+  Test::Deep: 0.093
+  Test::Pod: 1.2
+  Test::Pod::Coverage: 1.06
 provides:
   RRD::Simple:
     file: lib/RRD/Simple.pm
-    version: 1.42
-  RRD::Simple::_Colour:
-    file: lib/RRD/Simple.pm
-    version: 1.42
-generated_by: Module::Build version 0.2611
+    version: 1.43
+generated_by: Module::Build version 0.2806
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.2.html
+  version: 1.2

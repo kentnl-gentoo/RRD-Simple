@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: vmstat.pl 628 2006-06-15 17:25:19Z nicolaw $
+#   $Id: vmstat.pl 965 2007-03-01 19:11:23Z nicolaw $
 #   vmstat.pl - Example script bundled as part of RRD::Simple
 #
 #   Copyright 2005,2006 Nicola Worthington

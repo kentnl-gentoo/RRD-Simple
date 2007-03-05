@@ -1,4 +1,4 @@
-# $Id: 32exported_function_interface.t 945 2007-02-11 14:43:10Z nicolaw $
+# $Id: 32exported_function_interface.t 965 2007-03-01 19:11:23Z nicolaw $
 
 chdir('t') if -d 't';
 my $rrdfile = -d 't' ? 't/32test.rrd' : '32test.rrd';

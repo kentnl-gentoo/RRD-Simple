@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: rrd-client.pl 945 2007-02-11 14:43:10Z nicolaw $
+#   $Id: rrd-client.pl 965 2007-03-01 19:11:23Z nicolaw $
 #   rrd-client.pl - Data gathering script for RRD::Simple
 #
 #   Copyright 2006 Nicola Worthington
@@ -44,7 +44,7 @@ use strict;
 use warnings;
 use vars qw($VERSION);
 
-$VERSION = '1.40' || sprintf('%d', q$Revision: 945 $ =~ /(\d+)/g);
+$VERSION = '1.40' || sprintf('%d', q$Revision: 965 $ =~ /(\d+)/g);
 $ENV{PATH} = '/bin:/usr/bin';
 delete @ENV{qw(IFS CDPATH ENV BASH_ENV)};
 
@@ -142,7 +142,7 @@ sub display_help {
 
 # Display version
 sub display_version {
-	print "$0 version $VERSION ".'($Id: rrd-client.pl 945 2007-02-11 14:43:10Z nicolaw $)'."\n";
+	print "$0 version $VERSION ".'($Id: rrd-client.pl 965 2007-03-01 19:11:23Z nicolaw $)'."\n";
 }
 
 
@@ -179,7 +179,7 @@ sub basic_http {
 		# Send the HTTP request
 		print SOCK "$method $path HTTP/1.1\n";
 		print SOCK "Host: $host". ("$port" ne "80" ? ":$port" : '') ."\n";
-		print SOCK "User-Agent: $0 version $VERSION ".'($Id: rrd-client.pl 945 2007-02-11 14:43:10Z nicolaw $)'."\n";
+		print SOCK "User-Agent: $0 version $VERSION ".'($Id: rrd-client.pl 965 2007-03-01 19:11:23Z nicolaw $)'."\n";
 		if ($post && $method eq 'POST') {
 			print SOCK "Content-Length: ". length($post) ."\n";
 			print SOCK "Content-Type: application/x-www-form-urlencoded\n";

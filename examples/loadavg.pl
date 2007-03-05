@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: loadavg.pl 644 2006-06-16 10:37:49Z nicolaw $
+#   $Id: loadavg.pl 965 2007-03-01 19:11:23Z nicolaw $
 #   loadavg.pl - Example script bundled as part of RRD::Simple
 #
 #   Copyright 2005,2006 Nicola Worthington

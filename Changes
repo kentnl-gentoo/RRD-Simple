@@ -1,3 +1,22 @@
+Version 1.43 - 5th March 2007
+    + Changed Build.PL to be more paranoid defaulting
+      to no while using $build->y_n to work around
+      potential removal of expected method functionality.
+
+    + Added complain.txt. 
+
+    + Added instructions for installing rrdtool and RRDs
+      under Debian/Ubuntu, RHEL and Fedora Core to the
+      INSTALL file.
+
+    + Various fixes and improvements to the POD.
+
+    + Added another example to RRD::Simple::Examples.
+
+    + Fixed typos in existing examples 1 to 5 in
+      RRD::Simple::Examples.
+
+
 Version 1.42 - 27th February 2007
     + Increased the spacing on the graph between the
       timestamps in the bottom right hand corner and

@@ -1,6 +1,6 @@
 ############################################################
 #
-#   $Id: Simple.pm 956 2007-02-27 18:06:01Z nicolaw $
+#   $Id: Simple.pm 988 2007-03-04 23:51:22Z nicolaw $
 #   RRD::Simple - Simple interface to create and store data in RRD files
 #
 #   Copyright 2005,2006,2007 Nicola Worthington
@@ -33,7 +33,7 @@ use File::Basename qw(fileparse dirname basename);
 use vars qw($VERSION $DEBUG $DEFAULT_DSTYPE
 			 @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '1.42' || sprintf('%d', q$Revision: 956 $ =~ /(\d+)/g);
+$VERSION = '1.43' || sprintf('%d', q$Revision: 988 $ =~ /(\d+)/g);
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -1430,7 +1430,7 @@ RRD::Simple - Simple interface to create and store data in RRD files
 =head1 DESCRIPTION
 
 RRD::Simple provides a simple interface to RRDTool's RRDs module.
-This module does not currently offer C<fetch> method that is
+This module does not currently offer a C<fetch> method that is
 available in the RRDs module.
 
 It does however create RRD files with a sensible set of default RRA
@@ -1458,7 +1458,7 @@ methods. This parameter specifies the RRD filename to be used.
 
 The C<rrdtool> parameter is optional. It specifically defines where the
 C<rrdtool> binary can be found. If not specified, the module will search for
-the C<rrdtool> binary in your path, an additional location relative where
+the C<rrdtool> binary in your path, an additional location relative to where
 the C<RRDs> module was loaded from, and in /usr/local/rrdtool*.
 
 The C<rrdtool> binary is only used by the C<add_source> method, and only
@@ -1466,9 +1466,11 @@ under certain circumstances. The C<add_source> method may also be called
 automatically by the C<update> method, if data point values for a previously
 undefined data source are provided for insertion.
 
-The C<cf> parameter is optional, and defaults to AVERAGE and MAX. The C<cf>
-parameter defines which consolidation functions are used in round robin
-archives (RRAs) when creating new RRD files.
+The C<cf> parameter is optional, but when specified expects an array
+reference. The C<cf> parameter defines which consolidation functions are
+used in round robin archives (RRAs) when creating new RRD files. Valid
+values are AVERAGE, MIN, MAX and LAST. The default value is AVERAGE and
+MAX.
 
 The C<default_dstype> parameter is optional. Specifying the default data
 source type (DST) through the new() method allows the DST to be localised
@@ -1482,6 +1484,8 @@ See L<$RRD::Simple::DEFAULT_DSTYPE>.
          source_name => "TYPE",
          source_name => "TYPE"
      );
+
+This method will create a new RRD file on disk.
 
 C<$rrdfile> is optional and will default to using the RRD filename specified
 by the C<new> constructor method, or C<$0.rrd>. (Script basename with the file
@@ -1498,6 +1502,11 @@ seconds (5 minutes) and heartbeat of 600 seconds (10 minutes), whereas all the
 other data retention periods use a data stepping resolution of 60 seconds
 (1 minute) and heartbeat of 120 seconds (2 minutes).
 
+Each data source name should specify the data source type. Valid data source
+types (DSTs) are GAUGE, COUNTER, DERIVE and ABSOLUTE. See the section
+regrading DSTs at L<http://oss.oetiker.ch/rrdtool/doc/rrdcreate.en.html>
+for further information.
+
 RRD::Simple will croak and die if you try to create an RRD file that already
 exists.
 
@@ -1508,6 +1517,9 @@ exists.
          source_name => "VALUE",
          source_name => "VALUE"
      );
+
+This method will update an RRD file by inserting new data point values
+in to the RRD file.
 
 C<$rrdfile> is optional and will default to using the RRD filename specified
 by the C<new> constructor method, or C<$0.rrd>. (Script basename with the file
@@ -1536,6 +1548,10 @@ you if have perl warnings turned on.
 
  my $unixtime = $rrd->last($rrdfile);
 
+This method returns the last (most recent) data point entry time in the RRD
+file in UNIX time (seconds since the epoch; Jan 1st 1970). This value should
+not be confused with the last modified time of the RRD file.
+
 C<$rrdfile> is optional and will default to using the RRD filename specified
 by the C<new> constructor method, or C<$0.rrd>. (Script basename with the file
 extension of .rrd).
@@ -1543,6 +1559,9 @@ extension of .rrd).
 =head2 sources
 
  my @sources = $rrd->sources($rrdfile);
+
+This method returns a list of all of the data source names contained within
+the RRD file.
 
 C<$rrdfile> is optional and will default to using the RRD filename specified
 by the C<new> constructor method, or C<$0.rrd>. (Script basename with the file
@@ -1554,13 +1573,13 @@ extension of .rrd).
          source_name => "TYPE"
      );
 
-C<$rrdfile> is optional and will default to using the RRD filename specified
-by the C<new> constructor method, or C<$0.rrd>. (Script basename with the file
-extension of .rrd).
-
 You may add a new data source to an existing RRD file using this method. Only
 one data source name can be added at a time. You must also specify the data
 source type.
+
+C<$rrdfile> is optional and will default to using the RRD filename specified
+by the C<new> constructor method, or C<$0.rrd>. (Script basename with the file
+extension of .rrd).
 
 This method can be called internally by the C<update> method to automatically
 add missing data sources.
@@ -1569,11 +1588,11 @@ add missing data sources.
 
  $rrd->rename_source($rrdfile, "old_datasource", "new_datasource");
 
+You may rename a data source in an existing RRD file using this method.
+
 C<$rrdfile> is optional and will default to using the RRD filename specified
 by the C<new> constructor method, or C<$0.rrd>. (Script basename with the file
 extension of .rrd).
-
-You may renames a data source in an existing RRD file using this method.
 
 =head2 graph
 
@@ -1591,6 +1610,18 @@ You may renames a data source in an existing RRD file using this method.
          rrd_graph_option => "value",
          rrd_graph_option => "value"
      );
+
+This method will render one or more graph images that show the data in the 
+RRD file.
+
+The number of image files that are created depends on the retention period
+of the RRD file. Daily, weekly, monthly, annual and 3year graphs will be
+created if there is enough data in the RRD file to accomodate them.
+
+The image filenames will start with either the basename of the RRD
+file, or whatever is specified by the C<basename> parameter. The second part
+of the filename will be "-daily", "-weekly", "-monthly", "-annual" or
+"-3year" depending on the period that is being graphed.
 
 C<$rrdfile> is optional and will default to using the RRD filename specified
 by the C<new> constructor method, or C<$0.rrd>. (Script basename with the file
@@ -1611,7 +1642,7 @@ permissions to write the graph images).
 =item basename
 
 The C<basename> parameter is optional. This parameter specifies the basename
-of the graph image files that will be created. If not specified, tt will
+of the graph image files that will be created. If not specified, it will
 default to the name of the RRD file. For exmaple, if you specify a basename
 name of C<mygraph>, the following graph image files will be created in the
 C<destination> directory:
@@ -1631,10 +1662,10 @@ the standard RRDs options. (See below).
      );
 
 The C<timestamp> parameter is optional, but will default to "graph". This
-parameter specifies which "last upated" timestamps should be added to the
+parameter specifies which "last updated" timestamps should be added to the
 bottom right hand corner of the graph.
 
-Valid values are: "graph" - the timestamp of when the graph was last updated
+Valid values are: "graph" - the timestamp of when the graph was last rendered
 will be used, "rrd" - the timestamp of when the RRD file was last updated will
 be used, "both" - both the timestamps of when the graph and RRD file were last
 updated will be used, "none" - no timestamp will be used.
@@ -1715,9 +1746,9 @@ Valid values are 1, 2 and 3 (pixels).
 
 =item extended_legend
 
-Prints more detailed information in the graph legend by adding the
-minimum, maximum and last values recorded on the graph for each data
-source.
+If set to boolean true, prints more detailed information in the graph legend
+by adding the minimum, maximum and last values recorded on the graph for each
+data source.
 
 =back
 
@@ -1754,42 +1785,42 @@ L<http://people.ee.ethz.ch/~oetiker/webtools/rrdtool/doc/index.en.html>.
 
  my $seconds = $rrd->retention_period($rrdfile);
 
+This method will return the maximum period of time (in seconds) that the RRD
+file will store data for.
+
 C<$rrdfile> is optional and will default to using the RRD filename specified
 by the C<new> constructor method, or C<$0.rrd>. (Script basename with the file
 extension of .rrd).
-
-This method will return a maximum period of time (in seconds) that the RRD
-file will store data for.
 
 =head2 info
 
  my $info = $rrd->info($rrdfile);
 
+This method will return a complex data structure containing details about
+the RRD file, including RRA and data source information.
+
 C<$rrdfile> is optional and will default to using the RRD filename specified
 by the C<new> constructor method, or C<$0.rrd>. (Script basename with the file
 extension of .rrd).
-
-This method will return a complex data structure containing details about
-the RRD file, including RRA and data source information.
 
 =head2 heartbeat
 
  my $heartbeat = $rrd->heartbeat($rrdfile, "dsname");
  my @rtn = $rrd->heartbeat($rrdfile, "dsname", 600);
 
+This method will return the current heartbeat of a data source, or set a
+new heartbeat of a data source.
+
 C<$rrdfile> is optional and will default to using the RRD filename specified
 by the C<new> constructor method, or C<$0.rrd>. (Script basename with the file
 extension of .rrd).
-
-This method will return the current heartbeat of a data source, or set a
-new heartbeat of a data source.
 
 =head1 VARIABLES
 
 =head2 $RRD::Simple::DEBUG
 
 Debug and trace information will be printed to STDERR if this variable
-if set to 1 (boolean true).
+is set to 1 (boolean true).
 
 This variable will take its value from C<$ENV{DEBUG}>, if it exists,
 otherwise it will default to 0 (boolean false). This is a normal package
@@ -1832,12 +1863,12 @@ details.
 
 L<RRDTool::OO>, L<RRDs>,
 L<http://www.rrdtool.org>, examples/*.pl,
-L<http://search.cpan.org/src/NICOLAW/RRD-Simple-1.41/examples/>,
+L<http://search.cpan.org/src/NICOLAW/RRD-Simple-1.43/examples/>,
 L<http://rrd.me.uk>
 
 =head1 VERSION
 
-$Id: Simple.pm 956 2007-02-27 18:06:01Z nicolaw $
+$Id: Simple.pm 988 2007-03-04 23:51:22Z nicolaw $
 
 =head1 AUTHOR
 

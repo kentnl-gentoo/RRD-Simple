@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: rrd-server.pl 733 2006-08-01 18:43:09Z nicolaw $
+#   $Id: rrd-server.pl 965 2007-03-01 19:11:23Z nicolaw $
 #   rrd-server.pl - Data gathering script for RRD::Simple
 #
 #   Copyright 2006 Nicola Worthington
@@ -50,7 +50,7 @@ use File::Path qw();
 use Config::General qw();
 use vars qw($VERSION);
 
-$VERSION = '1.39' || sprintf('%d', q$Revision: 733 $ =~ /(\d+)/g);
+$VERSION = '1.39' || sprintf('%d', q$Revision: 965 $ =~ /(\d+)/g);
 
 # Get command line options
 my %opt = ();
@@ -286,7 +286,7 @@ sub display_help {
 
 # Display version
 sub display_version {
-	print "$0 version $VERSION ".'($Id: rrd-server.pl 733 2006-08-01 18:43:09Z nicolaw $)'."\n";
+	print "$0 version $VERSION ".'($Id: rrd-server.pl 965 2007-03-01 19:11:23Z nicolaw $)'."\n";
 }
 
 sub key_ready {

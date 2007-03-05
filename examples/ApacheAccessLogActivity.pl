@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: ApacheAccessLogActivity.pl 613 2006-06-13 21:22:48Z nicolaw $
+#   $Id: ApacheAccessLogActivity.pl 965 2007-03-01 19:11:23Z nicolaw $
 #   ApacheAccessLogActivity.pl - Example script bundled as part of RRD::Simple
 #
 #   Copyright 2005,2006 Nicola Worthington
@@ -121,7 +121,7 @@ exit;
 ##############################################
 
 sub version {
-	print '$Id: ApacheAccessLogActivity.pl 613 2006-06-13 21:22:48Z nicolaw $'."\n";
+	print '$Id: ApacheAccessLogActivity.pl 965 2007-03-01 19:11:23Z nicolaw $'."\n";
 	exit;
 }
 

@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: network.pl 645 2006-06-16 10:53:12Z nicolaw $
+#   $Id: network.pl 965 2007-03-01 19:11:23Z nicolaw $
 #   network.pl - Example script bundled as part of RRD::Simple
 #
 #   Copyright 2006 Nicola Worthington

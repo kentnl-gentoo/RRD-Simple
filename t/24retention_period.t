@@ -1,4 +1,4 @@
-# $Id: 24retention_period.t 945 2007-02-11 14:43:10Z nicolaw $
+# $Id: 24retention_period.t 965 2007-03-01 19:11:23Z nicolaw $
 
 chdir('t') if -d 't';
 my $rrdfile = -d 't' ? 't/24test.rrd' : '24test.rrd';

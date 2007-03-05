@@ -1,4 +1,4 @@
-# $Id: answers.pl 945 2007-02-11 14:43:10Z nicolaw $
+# $Id: answers.pl 965 2007-03-01 19:11:23Z nicolaw $
 
 %scheme_graphs = (
 		'3years' => [ qw(daily weekly monthly annual 3years) ],

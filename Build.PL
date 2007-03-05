@@ -1,5 +1,5 @@
 # vim:ts=4:sw=4:tw=78
-# $Id: Build.PL 945 2007-02-11 14:43:10Z nicolaw $
+# $Id: Build.PL 965 2007-03-01 19:11:23Z nicolaw $
 
 use strict;
 use Module::Build;
@@ -21,8 +21,9 @@ BEGIN {
 	}
 }
 
+my $module = 'RRD::Simple';
 $build = Module::Build->new(
-		module_name        => 'RRD::Simple',
+		module_name        => $module,
 		license            => 'open_source',
 		create_makefile_pl => 'passthrough',
 		create_readme      => 1,
@@ -77,7 +78,7 @@ if ($url) {
 		local $SIG{ALRM} = sub { die; };
 		alarm 10;
 		my $ua = LWP::UserAgent->new(
-				agent => 'Build.PL $Revision: 945 $',
+				agent => 'Build.PL $Revision: 965 $',
 				timeout => 9,
 				max_size => 500,
 			);
@@ -103,7 +104,7 @@ sub may_send_version_information {
 
 	my $str = sprintf('%s?%s=%s&%s=%s&%s=%s&%s=%s&%s=%s&%s=%s',
 			'http://perlgirl.org.uk/lib/usage.cgi',
-			'name',     $build->dist_name(),
+			'name',     $module,
 			'version',  $build->dist_version(),
 			'osname',   $Config::Config{osname},
 			'archname', $Config::Config{archname},
@@ -125,7 +126,7 @@ sub may_send_version_information {
 		alarm 0;
 	};
 
-	return $send ? $str : undef;
+	return defined $send && !ref($send) && "$send" eq "1" ? $str : undef;
 }
 
 1;

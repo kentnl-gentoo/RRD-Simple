@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 ###########################################################
 #
-#   $Id: statlogs.pl 613 2006-06-13 21:22:48Z nicolaw $
+#   $Id: statlogs.pl 965 2007-03-01 19:11:23Z nicolaw $
 #   statlogs.pl - Example script bundled as part of RRD::Simple
 #
 #   Copyright 2006 Nicola Worthington
