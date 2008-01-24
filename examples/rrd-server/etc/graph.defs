@@ -70,20 +70,46 @@
 	vertical_label          "interrupts/sec"
 	source_drawtypes        "AREA"
 	source_colors           "ff0000"
-	lower_limit			0
+	lower_limit		0
+	rigid
+</graph>
+
+<graph hw_irq_interrupts_cpu\d+>
+	extended_legend         Yes
+	title                   "IRQ Interrupts for $1"
+	vertical_label          "interrupts/sec"
+	lower_limit		0
 	rigid
 </graph>
 
 <graph cpu_utilisation>
-	extended_legend         Yes
 	title                   "CPU Utilisation"
 	vertical_label          "% percent"
 	upper_limit             100
 	lower_limit             0
 	rigid
+	extended_legend         Yes
 	sources                 "System User IO_Wait Idle"
 	source_drawtypes        "AREA STACK STACK STACK"
 	source_colors           "ff0000 00ff00 0000ff ffffff"
+#	CDEF			"mycdef1=User,100,*"
+#	CDEF			"mycdef2=User,2,*"
+#	CDEF			"mycdef3=User,300,*"
+#	LINE1			"mycdef2\#00ff00:MyCDef2"
+#	PRINT			"mycdef2:MIN:mycdef2 min %1.2lf"
+#	PRINT			"mycdef2:MAX:mycdef2 max %1.2lf"
+#	PRINT			"mycdef2:LAST:mycdef2 last %1.2lf"
+#	GPRINT			"mycdef2:MIN:   min\:%10.2lf\g"
+#	GPRINT			"mycdef2:MAX:   max\:%10.2lf\g"
+#	GPRINT			"mycdef2:LAST:   last\:%10.2lf\l"
+</graph>
+
+<graph nagios_perfdata_(?:host|service)_.+>
+	title                   "Nagios PerfData: $1"
+	vertical_label          "Seconds"
+	sources			latency execution
+	source_drawtypes        "AREA STACK"
+	source_labels           "Latency Execution"
 </graph>
 
 <graph db_mysql_replication>
@@ -99,6 +125,14 @@
 	source_drawtypes        "AREA"
 	sources                 "Questions"
 	source_labels           "Queries"
+</graph>
+
+<graph db_mysql_activity_com>
+	title                   "MySQL Database Command Activity"
+	vertical_label          "queries/sec"
+	source_drawtypes        "AREA STACK STACK STACK STACK"
+	sources                 "Com_select Com_insert Com_update Com_replace Com_delete"
+	source_labels           "SELECT INSERT UPDATE REPLACE DELETE"
 </graph>
 
 <graph mail_sendmail_queue>
@@ -117,6 +151,16 @@
 	title                   "Postfix Mail Queue"
 	vertical_label          "Messages"
 	source_drawtypes        "AREA"
+	extended_legend         Yes
+</graph>
+
+<graph mail_traffic>
+	title                   "MTA Traffic"
+	vertical_label          "messages/min"
+	source_drawtypes        "AREA STACK STACK STACK STACK STACK"
+	sources                 "sent received rejected bounced virus spam"
+	source_labels           "Sent","Received","Rejected","Bounced", "Virus", "Spam Email"
+	source_colours          "000099 009900 AA0000 000000 DDBB00 999999"
 	extended_legend         Yes
 </graph>
 
@@ -140,6 +184,15 @@
 	source_colours          "ffaaaa cc7777 0000aa bb00bb"
 </graph>
 
+<graph misc_entropy>
+	extended_legend         Yes
+	title                   "Available Entropy"
+	vertical_label          "Entropy"
+	extended_legend         Yes
+	sources			"entropy_avail"
+	source_labels		"Entropy"
+</graph>
+
 <graph misc_ipmi_temp>
 	extended_legend         Yes
 	title                   "IPMI Temperature Probes"
@@ -149,7 +202,22 @@
 	rigid
 </graph>
 
-<graph hdd_temp>
+<graph misc_fan_rpm>
+	extended_legend         Yes
+	title                   "Fan RPM"
+	vertical_label          "RPM"
+</graph>
+
+<graph hdd_temp_f>
+	extended_legend         Yes
+	title                   "Hard Disk Temperature"
+	vertical_label          "Fahrenheit"
+	lower_limit             60
+	upper_limit             140
+	rigid
+</graph>
+
+<graph hdd_temp(_c)?>
 	extended_legend         Yes
 	title                   "Hard Disk Temperature"
 	vertical_label          "Celsius"
@@ -165,6 +233,8 @@
 	vertical_label          "% used"
 	units_exponent          0
 	upper_limit             100
+	lower_limit             0
+	rigid
 </graph>
 
 <graph hdd_capacity_inodes>
@@ -198,6 +268,7 @@
 	title				"Threads"
 	vertical_label		"n"
 	sources				"Threads Processes MultiThreadProcs"
+	source_labels		"Threads Processes ThreadProcs"
 	source_drawtypes	"AREA LINE1 LINE1"
 	source_colours		"9999ff 007700 cc0000"
 </graph>
@@ -266,13 +337,13 @@
 </graph>
 
 <graph misc_users>
-	title				"Users Logged In"
-	sources				"Users Unique"
+	title			"Users Logged In"
+	sources			"Users Unique"
 	source_drawtypes	"AREA LINE1"
 	source_colours		"00ee00 0000aa"
 	vertical_label		"Users"
 	line_thickness		1
-	lower_limit			0
+	lower_limit		0
 	rigid
 </graph>
 
@@ -331,4 +402,27 @@
 	source_drawtypes	"AREA LINE"
 	source_colors		"00dd00 0000dd"
 </graph>
+
+<graph "switch_traffic(?:_([^_]+))?">
+    extended_legend     Yes
+    title               "Network Traffic: $1"
+    vertical_label      "bits/sec"
+    sources             "ifOutOctets ifInOctets"
+    source_drawtypes    "AREA LINE"
+    source_colors       "00dd00 0000dd"
+</graph>
+
+<graph "net_lvs_ipvsadm_connections_inactive_(\S+)">
+    extended_legend     Yes
+    title               "Inactive LVS Connections for $1"
+    vertical_label      "Connections"
+</graph>
+
+<graph "net_lvs_ipvsadm_connections_active_(\S+)">
+    extended_legend     Yes
+    title               "Active LVS Connections for $1"
+    vertical_label      "Connections"
+</graph>
+
+
 

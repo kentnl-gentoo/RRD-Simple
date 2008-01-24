@@ -1,10 +1,10 @@
-#!/usr/bin/perl -w
+#!/bin/env perl
 ############################################################
 #
-#   $Id: rrd-server.pl 965 2007-03-01 19:11:23Z nicolaw $
+#   $Id: rrd-server.pl 1101 2008-01-24 18:07:32Z nicolaw $
 #   rrd-server.pl - Data gathering script for RRD::Simple
 #
-#   Copyright 2006 Nicola Worthington
+#   Copyright 2006, 2007, 2008 Nicola Worthington
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -23,7 +23,9 @@
 
 BEGIN {
 	# User defined constants
-	use constant BASEDIR => '/home/system/rrd';
+	use constant BASEDIR => '/home/nicolaw/webroot/www/rrd.me.uk';
+	use constant THEME  => ('BACK#F5F5FF','SHADEA#C8C8FF','SHADEB#9696BE',
+				'ARROW#61B51B','GRID#404852','MGRID#67C6DE');
 }
 
 
@@ -41,29 +43,35 @@ use 5.004;
 use strict;
 use warnings;
 use lib qw(../lib);
-use RRD::Simple 1.39;
+use RRD::Simple 1.41;
 use RRDs;
 use Memoize;
 use Getopt::Std qw();
 use File::Basename qw(basename);
 use File::Path qw();
 use Config::General qw();
+use File::Spec::Functions qw(catfile catdir);
 use vars qw($VERSION);
 
-$VERSION = '1.39' || sprintf('%d', q$Revision: 965 $ =~ /(\d+)/g);
+$VERSION = '1.43' || sprintf('%d', q$Revision: 1101 $ =~ /(\d+)/g);
 
 # Get command line options
 my %opt = ();
-Getopt::Std::getopts('u:gthvf', \%opt);
+$Getopt::Std::STANDARD_HELP_VERSION = 1;
+$Getopt::Std::STANDARD_HELP_VERSION = 1;
+Getopt::Std::getopts('u:G:T:gthvVf?', \%opt);
+
+$opt{g} ||= $opt{G};
+$opt{t} ||= $opt{T};
 
 # Display help or version
-(display_version() && exit) if defined $opt{v};
-(display_help() && exit) if defined $opt{h} ||
+(VERSION_MESSAGE() && exit) if defined $opt{v};
+(HELP_MESSAGE() && exit) if defined $opt{h} || defined $opt{'?'} ||
 	!(defined $opt{u} || defined $opt{g} || defined $opt{t});
 
 # cd to the righr location and define directories
 chdir BASEDIR || die sprintf("Unable to chdir to '%s': %s", BASEDIR, $!);
-my %dir = map { ( $_ => BASEDIR."/$_" ) } qw(bin spool data etc graphs cgi-bin thumbnails);
+my %dir = map { ( $_ => BASEDIR."/$_" ) } qw(bin data etc graphs cgi-bin thumbnails);
 
 # Create an RRD::Simple object
 my $rrd = RRD::Simple->new(rrdtool => "$dir{bin}/rrdtool");
@@ -74,10 +82,23 @@ memoize('read_graph_data');
 memoize('basename');
 memoize('graph_def');
 
-# Go and do some work
+# Update the RRD if we've been asked to
 my $hostname = defined $opt{u} ? update_rrd($rrd,\%dir,$opt{u}) : undef;
-create_thumbnails($rrd,\%dir,$hostname) if defined $opt{t};
-create_graphs($rrd,\%dir,$hostname) if defined $opt{g};
+
+# Generate some graphs
+my @hosts;
+for my $host (($hostname, $opt{G}, $opt{T})) {
+	next unless defined $host;
+	for (split(/\s*[,:]\s*/,$host)) {
+		push(@hosts, $_) if defined($_) && length($_);
+	}
+}
+@hosts = list_dir($dir{data}) unless @hosts;
+
+for my $hostname (@hosts) {
+	create_thumbnails($rrd,\%dir,$hostname) if defined $opt{t};
+	create_graphs($rrd,\%dir,$hostname) if defined $opt{g};
+}
 
 exit;
 
@@ -88,16 +109,13 @@ sub create_graphs {
 	my ($rrd,$dir,$hostname,@options) = @_;
 
 	my ($caller) = ((caller(1))[3] || '') =~ /.*::(.+)$/;
-	my $destdir = defined $caller && $caller eq 'create_thumbnails'
-			? $dir->{thumbnails} : $dir->{graphs};
+	my $thumbnails = defined $caller && $caller eq 'create_thumbnails' ? 1 : 0;
+	my $destdir = $thumbnails ? $dir->{thumbnails} : $dir->{graphs};
 
-	my @colour_theme = (color => [ (
-			'BACK#F5F5FF','SHADEA#C8C8FF','SHADEB#9696BE',
-			'ARROW#61B51B','GRID#404852','MGRID#67C6DE',
-		) ] );
-
+	my @colour_theme = (color => [ THEME ]);
 	my $gdefs = read_graph_data("$dir->{etc}/graph.defs");
-	my @hosts = defined $hostname ? ($hostname) : list_dir("$dir->{data}");
+	my @hosts = defined $hostname ? ($hostname)
+			: grep { -d catdir($dir->{data}, $_) } list_dir("$dir->{data}");
 
 	# For each hostname
 	for my $hostname (sort @hosts) {
@@ -106,39 +124,109 @@ sub create_graphs {
 		File::Path::mkpath($destination) unless -d $destination;
 
 		# For each RRD
-		for my $file (list_dir("$dir->{data}/$hostname")) {
-			my $rrdfile = "$dir->{data}/$hostname/$file";
+		for my $file (grep { $_ =~ /\.rrd$/i && !-d catfile($dir->{data},$hostname,$_) }
+				list_dir(catdir($dir->{data},$hostname))
+			) {
+
+			# next unless $file =~ /cpu_utilisation/;
+
+			my $rrdfile = catfile($dir->{data},$hostname,$file);
 			my $graph = basename($file,'.rrd');
 			my $gdef = graph_def($gdefs,$graph);
-			eval {
-				my @graph_opts = map { ($_ => $gdef->{$_}) }
-						grep(!/^source(s|_)/,keys %{$gdef});
-				push @graph_opts, map { ($_ => [ split(/\s+/,$gdef->{$_}) ]) }
-						grep(/^source_/,keys %{$gdef});
 
+			# Make sure we parse these raw commands with care
+			my @raw_cmd_list = qw(DEF CDEF VDEF TEXTALIGN AREA STACK LINE\d* HRULE\d* VRULE\d* TICK SHIFT GPRINT PRINT COMMENT);
+			my $raw_cmd_regex = '('.join('|',@raw_cmd_list).')';
+			# my $raw_cmd_regex = qr/^(?:[VC]?DEF|G?PRINT|COMMENT|[HV]RULE\d*|LINE\d*|AREA|TICK|SHIFT|STACK|TEXTALIGN)$/i;
+			my @raw_commands;
+			my @def_sources;
+			my @def_sources_draw;
+
+			# Allow users to put raw commands in the graph.defs file
+			for my $raw_cmd (@raw_cmd_list) {
+				for my $cmd (grep(/^$raw_cmd$/i, keys %{$gdef})) {
+					my $values = $gdef->{$cmd};
+					$values = [($values)] unless ref($values);
+					for my $v (@{$values}) {
+						push @raw_commands, (sprintf('%s:%s', uc($cmd), $v) => '');
+						if ($cmd =~ /^[CV]?DEF$/i && $v =~ /^([a-z0-9\_\-]{1,30})=/) {
+							push @def_sources, $1;
+						} elsif ($cmd =~ /^(?:LINE\d*|AREA|G?PRINT|TICK|STACK)$/i && $v =~ /^([a-z0-9\_\-]{1,30})[#:]/) {
+							push @def_sources_draw, $1;
+						}
+					}
+				}
+			}
+
+			# Wrap the RRD::Simple calls in an eval() block just in case
+			# the explode in a big nasty smelly heap!
+			eval {
+
+				# Anything that doesn't start with ^source(?:s|_) should just
+				# be pushed on to the RRD::Simple->graph option stack (So this
+				# would NOT include the "sources" option).
+				my @graph_opts = map { ($_ => $gdef->{$_}) }
+						grep(!/^source(s|_)/ && !/^$raw_cmd_regex$/i, keys %{$gdef});
+
+				# Anything that starts with ^source_ should be split up and passed
+				# as a hash reference in to the RRD::Simple->graph option stack
+				# (This would NOT include the "sources" option).
+				push @graph_opts, map {
+						# If we see a value from a key/value pair that looks
+						# like it might be quoted and comma seperated,
+						# "like this", 'then we should','split especially'
+						if ($gdef->{$_} =~ /["']\s*,\s*["']/) {
+							($_ => [ split(/\s*["']\s*,\s*["']\s*/,$gdef->{$_}) ])
+
+						# Otherwise just split on whitespace like the old
+						# version of rrd-server.pl used to do.
+						} else {
+							($_ => [ split(/\s+/,$gdef->{$_}) ])
+						}
+					} grep(/^source_/,keys %{$gdef});
+
+				# By default we want to tell RRDtool to be lazy and only generate
+				# graphs when it's actually necessary. If we have the -f for force
+				# flag then we won't let RRDtool be economical.
 				push @graph_opts, ('lazy','') unless exists $opt{f};
 
 				# Only draw the sources we've been told to, and only
 				# those that actually exist in the RRD file
 				my @rrd_sources = $rrd->sources($rrdfile);
 				if (defined $gdef->{sources}) {
-					my @sources = ();
-					for my $ds (split(/\s+/,$gdef->{sources})) {
+					my @sources;
+					for my $ds (split(/(?:\s+|\s*,\s*)/,$gdef->{sources})) {
 						push @sources, $ds if grep(/^$ds$/,@rrd_sources);
 					}
 					push @graph_opts, ('sources',\@sources);
-				} else {
+				} elsif (!@def_sources && !@def_sources_draw) {
 					push @graph_opts, ('sources', [ sort @rrd_sources ]);
+				} else {
+					push @graph_opts, ('sources', undef);
 				}
 
-				write_txt($rrd->graph($rrdfile,
-						destination => $destination,
-						@colour_theme,
-						@options,
-						@graph_opts,
-					));
+				printf "Generating %s/%s/%s ...\n",
+					$hostname,
+					($thumbnails ? 'thumbnails' : 'graphs'),
+					$graph if $opt{V};
+
+				# Generate the graph and capture the results to
+				# write the text file output in the same directory
+				my @stack = ($rrdfile);
+				push @stack, @raw_commands if @raw_commands;
+				push @stack, ( destination => $destination );
+				push @stack, ( timestamp => 'both' );
+				push @stack, @colour_theme if @colour_theme;
+				push @stack, @options if @options;
+				push @stack, @graph_opts if @graph_opts;
+				write_txt($rrd->graph(@stack));
+				
+				my $glob = catfile($destination,"$graph*.png");
+				my @images = glob($glob);
+				warn "[Warning] $rrdfile: Looks like \$rrd->graph() failed to generate any images in '$glob'\n."
+					unless @images;
 			};
-			warn "$rrdfile => $@" if $@;
+			warn "[Warning] $rrdfile: => $@" if $@;
 		}
 	}
 }
@@ -175,7 +263,7 @@ sub list_dir {
 
 sub create_thumbnails {
 	my ($rrd,$dir,$hostname) = @_;
-	my @thumbnail_options = (only_graph => "", width => 125, height => 32);
+	my @thumbnail_options = (only_graph => '', width => 125, height => 32);
 	create_graphs($rrd,$dir,$hostname,@thumbnail_options);
 }
 
@@ -194,11 +282,11 @@ sub update_rrd {
 		if $hostname =~ /[^\w\-\.\d]/ || $hostname =~ /^\.|\.$/;
 
 	# Create the data directory for the RRD file if it doesn't exist
-	File::Path::mkpath("$dir->{data}/$hostname") unless -d "$dir->{data}/$hostname";
+	File::Path::mkpath(catdir($dir->{data},$hostname)) unless -d catdir($dir->{data},$hostname);
 
 	# Open the input file if specified
 	if (defined $filename) {
-		open(FH,'<',$filename) || die "Unable to open file handle for file '$filename': $!";
+		open(FH,'<',$filename) || die "[Error] $rrd: Unable to open file handle for file '$filename': $!";
 		select FH;
 	};
 
@@ -218,7 +306,7 @@ sub update_rrd {
 		}
 		next if $bogus;
 
-		my $rrdfile = "$dir->{data}/$hostname/".join('_',@path).".rrd";
+		my $rrdfile = catfile($dir->{data},$hostname,join('_',@path).'.rrd');
 		$data{$rrdfile}->{$time}->{$key} = $value;
 	}
 
@@ -230,14 +318,14 @@ sub update_rrd {
 					unless -f $rrdfile;
 				$rrd->update($rrdfile, $time, %{$data{$rrdfile}->{$time}});
 			};
-			warn $@ if $@;
+			warn "[Warning] $rrdfile: $@" if $@;
 		}
 	}
 
 	# Close the input file if specified
 	if (defined $filename) {
 		select STDOUT;
-		close(FH) || warn "Unable to close file handle for file '$filename': $!";
+		close(FH) || warn "[Warning] $rrd: Unable to close file handle for file '$filename': $!";
 	}
 
 	return $hostname;
@@ -245,7 +333,7 @@ sub update_rrd {
 
 sub create_rrd {
 	my ($rrd,$dir,$rrdfile,$data) = @_;
-	my $defs = read_create_data("$dir->{etc}/create.defs");
+	my $defs = read_create_data(catfile($dir->{etc},'create.defs'));
 
 	# Figure out what DS types to use
 	my %create = map { ($_ => 'GAUGE') } sort keys %{$data};
@@ -275,18 +363,20 @@ sub create_rrd {
 	}
 }
 
-sub display_help {
-	print qq{Syntax: $0 <-u hostname,-g,-t|-h|-v> [inputfile]
+sub HELP_MESSAGE {
+	print qq{Syntax: rrd-server.pl <-u hostname,-g,-t,-V|-h|-v> [inputfile]
      -u <hostname>   Update RRD data for <hostname>
      -g              Create graphs from RRD data
      -t              Create thumbnails from RRD data
+     -V              Display verbose progress information
      -v              Display version information
      -h              Display this help\n};
 }
 
 # Display version
-sub display_version {
-	print "$0 version $VERSION ".'($Id: rrd-server.pl 965 2007-03-01 19:11:23Z nicolaw $)'."\n";
+sub VERSION { &VERSION_MESSAGE; }
+sub VERSION_MESSAGE {
+	print "$0 version $VERSION ".'($Id: rrd-server.pl 1101 2008-01-24 18:07:32Z nicolaw $)'."\n";
 }
 
 sub key_ready {
@@ -305,15 +395,13 @@ sub read_graph_data {
 			-LowerCaseNames		=> 1,
 			-UseApacheInclude	=> 1,
 			-IncludeRelative	=> 1,
-#			-DefaultConfig		=> \%default,
 			-MergeDuplicateBlocks	=> 1,
 			-AllowMultiOptions	=> 1,
-			-MergeDuplicateOptions	=> 1,
 			-AutoTrue		=> 1,
 		);
 		%config = $conf->getall;
 	};
-	warn $@ if $@;
+	warn "[Warning] $@" if $@;
 
 	return \%config;
 }
@@ -323,15 +411,17 @@ sub read_create_data {
 	my %defs = ();
 	
 	# Open the input file if specified
+	my @data;
 	if (defined $filename && -f $filename) {
 		open(FH,'<',$filename) || die "Unable to open file handle for file '$filename': $!";
-		select FH;
+		@data = <FH>;
+		close(FH) || warn "Unable to close file handle for file '$filename': $!";
 	} else {
-		select DATA;
+		@data = <DATA>;
 	}
 
-	# Parse the file
-	while (local $_ = <DATA>) {
+	# Parse the file that you've just selected
+	for (@data) {
 		last if /^__END__\s*$/;
 		next if /^\s*$/ || /^\s*#/;
 
@@ -355,38 +445,55 @@ sub read_create_data {
 			};
 	}
 
-	# Close the input file if specified
-	select STDOUT;
-	if (defined $filename && -f $filename) {
-		close(FH) || warn "Unable to close file handle for file '$filename': $!";
-	}
-
 	return \%defs;
 }
+
+
+
+
+##
+## This processing and robustness of this routine is pretty
+## bloody dire and awful. It needs to be rewritten with crap
+## input data in mind rather than patching it every time I
+## find a new scenario for the data to not be as expected!! ;-)
+##
 
 sub write_txt {
 	my %rtn = @_;
 	while (my ($period,$data) = each %rtn) {
 		my $filename = shift @{$data};
 		last if $filename =~ m,/thumbnails/,;
+
 		my %values = ();
 		my $max_len = 0;
 		for (@{$data->[0]}) {
 			my ($ds,$k,$v) = split(/\s+/,$_);
+			next unless defined($ds) && length($ds) && defined($k);
 			$values{$ds}->{$k} = $v;
 			$max_len = length($ds) if length($ds) > $max_len;
 		}
+
 		if (open(FH,'>',"$filename.txt")) {
-			printf FH "%s (%dx%d) %dK\n\n", basename($filename),
-			$data->[1], $data->[2], (stat($filename))[7]/1024;
-			for (sort keys %values) {
-				printf FH "%-${max_len}s     min: %s, max: %s, last: %s\n", $_,
-				$values{$_}->{min}, $values{$_}->{max}, $values{$_}->{last};
+			printf FH "%s (%dx%d) %dK\n\n",
+				basename($filename),
+				(defined($data->[1]) ? $data->[1] : -1),
+				(defined($data->[2]) ? $data->[2] : -1),
+				(-e $filename ? (stat($filename))[7]/1024 : 0);
+
+			for my $ds (sort keys %values) {
+				for (qw(min max last)) {
+					$values{$ds}->{$_} = ''
+						unless defined $values{$ds}->{$_};
+				}
+				printf FH "%-${max_len}s     min: %s, max: %s, last: %s\n", $ds,
+				$values{$ds}->{min}, $values{$ds}->{max}, $values{$ds}->{last};
 			}
 			close(FH);
 		}
 	}
 }
+
+
 
 
 1;
@@ -404,11 +511,14 @@ __DATA__
 
 ^hdd_io_.+	*	DERIVE	0	-
 
+^hw_irq_interrupts_cpu\d+$	*	DERIVE	0	-
+
 ^apache_status$	ReqPerSec	DERIVE	0	-
 ^apache_status$	BytesPerSec	DERIVE	0	-
 ^apache_logs$	*	DERIVE	0	-
 
 ^db_mysql_activity$	*	DERIVE	0	-
+^db_mysql_activity_com$	*	DERIVE	0	-
 
 __END__
 

@@ -1,6 +1,6 @@
 ---
 name: RRD-Simple
-version: 1.43
+version: 1.44
 author:
   - 'Nicola Worthington <nicolaw@cpan.org>'
 abstract: Simple interface to create and store data in RRD files
@@ -25,8 +25,8 @@ recommends:
 provides:
   RRD::Simple:
     file: lib/RRD/Simple.pm
-    version: 1.43
-generated_by: Module::Build version 0.2806
+    version: 1.44
+generated_by: Module::Build version 0.2808
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.2.html
   version: 1.2

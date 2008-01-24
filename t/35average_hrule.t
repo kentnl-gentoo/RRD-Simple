@@ -1,4 +1,4 @@
-# $Id: 35average_hrule.t 965 2007-03-01 19:11:23Z nicolaw $
+# $Id: 35average_hrule.t 1100 2008-01-24 17:39:35Z nicolaw $
 
 my $rrdfile = -d 't' ? 't/35test.rrd' : '35test.rrd';
 unlink $rrdfile if -f $rrdfile;
@@ -37,6 +37,7 @@ for (my $t = $start; $t <= $end; $t += 60) {
 
 $rrd->graph($rrdfile,
 		sources => [ qw(knickers) ],
+		'VDEF:knickersAVERAGE=knickers,AVERAGE' => '',
 		'HRULE:knickersAVERAGE#00ff77:KnickersAvg' => '',
 	);
 

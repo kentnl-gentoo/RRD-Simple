@@ -1,10 +1,10 @@
 #!/usr/bin/perl -w
 ############################################################
 #
-#   $Id: rrd-client.pl 965 2007-03-01 19:11:23Z nicolaw $
+#   $Id: rrd-client.pl 1092 2008-01-23 14:23:51Z nicolaw $
 #   rrd-client.pl - Data gathering script for RRD::Simple
 #
-#   Copyright 2006 Nicola Worthington
+#   Copyright 2006,2007,2008 Nicola Worthington
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -41,38 +41,98 @@ use constant NET_PING_HOSTS => $ENV{NET_PING_HOSTS} ?
 
 use 5.004;
 use strict;
-use warnings;
+#use warnings; # comment out for release
 use vars qw($VERSION);
 
-$VERSION = '1.40' || sprintf('%d', q$Revision: 965 $ =~ /(\d+)/g);
+$VERSION = '1.42' || sprintf('%d', q$Revision: 1092 $ =~ /(\d+)/g);
 $ENV{PATH} = '/bin:/usr/bin';
 delete @ENV{qw(IFS CDPATH ENV BASH_ENV)};
 
 
 # Default list of probes
-my @probes = qw(
-		cpu_utilisation cpu_loadavg cpu_temp cpu_interrupts
-		hdd_io hdd_temp hdd_capacity
-		mem_usage mem_swap_activity mem_proc_largest
-		proc_threads proc_state proc_filehandles
-		apache_status apache_logs
-		misc_uptime misc_users misc_ipmi_temp
-		db_mysql_activity db_mysql_replication
-		mail_exim_queue mail_postfix_queue mail_sendmail_queue
-		net_traffic net_connections net_ping_host
+my %probes = (
+		hw_irq_interrupts    => 'Hardward IRQ Interrupts',
+
+		cpu_utilisation      => 'CPU Utilisation',
+		cpu_loadavg          => 'Load Average',
+		cpu_temp             => 'CPU Temperature',
+		cpu_interrupts       => 'CPU Interrupts',
+
+		hdd_io               => 'Hard Disk I/O',
+		hdd_temp             => 'Hard Disk Temperature',
+		hdd_capacity         => 'Disk Capacity',
+
+		mem_usage            => 'Memory Usage & Swap Usage',
+		mem_swap_activity    => 'Swap Activity',
+		mem_proc_largest     => 'Largest Process',
+
+		proc_threads         => 'Threads',
+		proc_state           => 'Processes',
+		proc_filehandles     => 'File Handles',
+
+		apache_status        => 'Apache Scoreboard & Apache Activity',
+		apache_logs          => 'Apache Log Activity',
+
+		misc_uptime          => 'Server Uptime',
+		misc_users           => 'Users Logged In',
+		misc_ipmi_temp       => 'IPMI Temperature Probes',
+		misc_entropy         => 'Available Entropy',
+
+		db_mysql_activity    => 'MySQL Database Activity',
+		db_mysql_replication => 'MySQL Database Replication',
+
+		mail_exim_queue      => 'Exim Mail Queue',
+		mail_postfix_queue   => 'Postfix Mail Queue',
+		mail_sendmail_queue  => 'Sendmail Mail Queue',
+
+		net_traffic          => 'Network Traffic',
+		net_connections      => 'Network Connections',
+		net_ping_host        => 'Ping',
+		# net_connections_ports => 'Service Connections',
 	);
-# net_connections_ports
 
 
 # Get command line options
 my %opt = ();
 eval "require Getopt::Std";
-Getopt::Std::getopts('p:i:x:hv', \%opt) unless $@;
-(display_help() && exit) if defined $opt{h};
-(display_version() && exit) if defined $opt{v};
+$Getopt::Std::STANDARD_HELP_VERSION = 1;
+$Getopt::Std::STANDARD_HELP_VERSION = 1;
+Getopt::Std::getopts('p:i:x:s:c:V:hvqlP:?', \%opt) unless $@;
+(HELP_MESSAGE() && exit) if defined $opt{h} || defined $opt{'?'};
+(VERSION_MESSAGE() && exit) if defined $opt{v};
 
+# Display a list of available probe names
+if ($opt{l}) {
+	print "Available probes:\n";
+	printf "   %-24s %s\n",'PROBE','DESCRIPTION';
+	for (sort keys %probes) {
+		my $str = sprintf("   %-24s %s\n", $_, $probes{$_});
+		$str =~ s/(\S+) (\s+) /$_ = "$1 ". '.' x length($2) ." ";/e;
+		print "$str";
+	}
+	exit;
+}
+
+# Check to see if we are capable of SNMP queries
+my $snmpClient;
+if ($opt{s}) {
+	eval {
+		require Net::SNMP;
+		$snmpClient = 'Net::SNMP';
+	};
+	if ($@) {
+		my $c = 'snmpwalk'; # snmpget
+		my $cmd = select_cmd("/usr/bin/$c","/usr/local/bin/$c");
+		die "Error: unable to query via SNMP. Please install Net::SNMP or $c.\n" unless $cmd;
+		$snmpClient = $cmd;
+	}
+	$opt{c} = 'public' unless defined($opt{c}) && $opt{c} =~ /\S+/;
+	$opt{V} = '2c' unless defined($opt{V}) && $opt{V} =~ /^(1|2c)$/;
+	$opt{P} = 161 unless defined($opt{P}) && $opt{P} =~ /^[0-9]+$/;
+}
 
 # Filter on probe include list
+my @probes = sort keys %probes;
 if (defined $opt{i}) {
 	my $inc = join('|',split(/\s*,\s*/,$opt{i}));
 	@probes = grep(/(^|_)($inc)(_|$)/,@probes);
@@ -86,7 +146,7 @@ if (defined $opt{x}) {
 
 
 # Run the probes one by one
-die "Nothing to probe!\n" unless @probes;
+die "Error: nothing to probe!\n" unless @probes;
 my $post = '';
 my %update_cache;
 for my $probe (@probes) {
@@ -99,10 +159,10 @@ for my $probe (@probes) {
 		} else {
 			print $str;
 		}
-		warn "$probe: $@" if $@;
+		warn "Warning [$probe]: $@" if !$opt{q} && $@;
 		alarm 0;
 	};
-	warn "$probe: $@" if $@;
+	warn "Warning [$probe]: $@" if !$opt{q} && $@;
 }
 
 
@@ -119,30 +179,45 @@ exit;
 # Report the data
 sub report {
 	(my $probe = shift) =~ s/[_-]/\./g;
-	my %data = @_;
+	my %data = @_ % 2 ? (@_,undef) : @_;
 	my $str = '';
 	for my $k (sort keys %data) {
-		$str .= sprintf("%s.%s.%s %s\n", time(),
-			$probe, $k, $data{$k});
+		#$data{$k} = 0 unless defined($data{$k});
+		next unless defined($data{$k}) && $data{$k} =~ /^[0-9\.]*$/;
+		$str .= sprintf("%s.%s.%s %s\n", time(), $probe, $k, $data{$k});
 	}
 	return $str;
 }
 
 
 # Display help
-sub display_help {
-	print qq{Syntax: $0 [-i probe1,probe2,..|-x probe1,probe2,..] [-p url] [-h|-v]
-     -i <probes>     Include a list of comma seperated probes
-     -x <probes>     Exclude a list of comma seperated probes
-     -p <url>        HTTP POST data to the specified URL
-     -v              Display version information
-     -h              Display this help\n};
+sub HELP_MESSAGE {
+	print qq{Syntax: rrd-client.pl [-i probe1,probe2,..|-x probe1,probe2,..]
+                      [-s host] [-c community] [-P port] [-V 1|2c] [-p URL] [-h|-v]
+   -i <probes>     Include a list of comma seperated probes
+   -x <probes>     Exclude a list of comma seperated probes
+   -s <host>       Specify hostname to probe via SNMP
+   -c <community>  Specify SNMP community name (defaults to public)
+   -V <version>    Specify SNMP version to use (1 or 2c, defaults to 2c)
+   -P <port>       Specify SNMP port to use
+   -p <URL>        HTTP POST data to the specified URL
+   -q              Suppress all warning messages
+   -l              Display a list of available probe names
+   -v              Display version information
+   -h              Display this help
+
+Examples:
+   rrd-client.pl -x apache_status -q -p http://rrd.me.uk/cgi-bin/rrd-server.cgi
+   rrd-client.pl -s localhost -p http://rrd.me.uk/cgi-bin/rrd-server.cgi
+   rrd-client.pl -s server1.company.com | rrd-server.pl -u server1.company.com
+\n};
 }
 
 
 # Display version
-sub display_version {
-	print "$0 version $VERSION ".'($Id: rrd-client.pl 965 2007-03-01 19:11:23Z nicolaw $)'."\n";
+sub VERSION { &VERSION_MESSAGE; }
+sub VERSION_MESSAGE {
+	print "$0 version $VERSION ".'($Id: rrd-client.pl 1092 2008-01-23 14:23:51Z nicolaw $)'."\n";
 }
 
 
@@ -179,24 +254,25 @@ sub basic_http {
 		# Send the HTTP request
 		print SOCK "$method $path HTTP/1.1\n";
 		print SOCK "Host: $host". ("$port" ne "80" ? ":$port" : '') ."\n";
-		print SOCK "User-Agent: $0 version $VERSION ".'($Id: rrd-client.pl 965 2007-03-01 19:11:23Z nicolaw $)'."\n";
-		if ($post && $method eq 'POST') {
-			print SOCK "Content-Length: ". length($post) ."\n";
+		print SOCK "User-Agent: $0 version $VERSION ".'($Id: rrd-client.pl 1092 2008-01-23 14:23:51Z nicolaw $)'."\n";
+		if ($data && $method eq 'POST') {
+			print SOCK "Content-Length: ". length($data) ."\n";
 			print SOCK "Content-Type: application/x-www-form-urlencoded\n";
 		}
 		print SOCK "\n";
-		print SOCK $post if $post && $method eq 'POST';
+		print SOCK $data if $data && $method eq 'POST';
 
 		my $body = 0;
 		while (local $_ = <SOCK>) {
-			$str .= $_ if $body;
+			s/[\n\n]+//g;
+			$str .= $_ if $_ && $body;
 			$body = 1 if /^\s*$/;
 		}
 		close(SOCK);
 		alarm 0;
 	};
 
-	warn "basic_http: $@" if $@ && $post;
+	warn "Warning [basic_http]: $@" if !$opt{q} && $@ && $data;
 	return wantarray ? split(/\n/,$str) : "$str";
 }
 
@@ -220,7 +296,55 @@ sub select_cmd {
 # Probes
 #
 
+
+sub _snmp {
+	my $oid = [@_];
+	my $result = {};
+
+	# Net::SNMP
+	if ($snmpClient eq 'Net::SNMP') {
+		my ($session, $error) = Net::SNMP->session(
+				-hostname  => $opt{s},
+				-community => $opt{c},
+				-version   => $opt{V},
+				-port      => $opt{P},
+				-translate => [ -timeticks => 0x0 ],
+			);
+		die $error if !defined($session);
+
+		$result = $session->get_request(-varbindlist => $oid);
+
+		$session->close;
+		die $session->error if !defined($result);
+
+	# snmpget / snmpwalk
+	} else {
+		my $oidStr = join(' ', @{$oid});
+		my $cmd = "$snmpClient -O n -O t -v $opt{V} -c $opt{c} $opt{s} $oidStr";
+		#my $cmd = "$snmpClient -O t -v $opt{V} -c $opt{c} $opt{s} $oidStr";
+
+		open(PH,'-|',"$cmd 2>&1") || die "Unable to open file handle PH for command '$cmd': $!\n";
+		while (local $_ = <PH>) {
+			s/[\r\n]+//g; s/^(?:\s+|\s+)$//g;
+			if (/^(\.[\.0-9]+|[A-Za-z:\-\.0-9]+)\s*=\s*(?:([A-Za-z0-9]+):\s*)?["']?(\S*)["']?/) {
+				my ($oid,$type,$value) = ($1,$2,$3);
+				$oid = ".$oid" if $oid =~ /^[0-9][0-9\.]+$/;
+				$result->{$oid} = $value;
+			} else {
+				warn "Warning [_snmp]: $_\n" unless $opt{q};
+			}
+		}
+	        close(PH) || die "Unable to close file handle PH for command '$cmd': $!\n";
+	}
+
+	return $result->{(keys(%{$result}))[0]} if !wantarray && keys(%{$result}) == 1;
+	return $result;
+}
+
+
+
 sub net_ping_host {
+	return if $opt{s};
 	return unless defined NET_PING_HOSTS() && scalar NET_PING_HOSTS() > 0;
 	my $cmd = select_cmd(qw(/bin/ping /usr/bin/ping /sbin/ping /usr/sbin/ping));
 	return unless -f $cmd;
@@ -253,6 +377,7 @@ sub net_ping_host {
 
 
 sub mem_proc_largest {
+	return if $opt{s};
 	my $cmd = select_cmd(qw(/bin/ps /usr/bin/ps));
 	return unless -f $cmd;
 	$cmd .= ' -eo vsize';
@@ -275,12 +400,19 @@ sub mem_proc_largest {
 
 
 sub proc_threads {
+	if ($opt{s}) {
+		my $procs = _snmp('.1.3.6.1.2.1.25.1.6.0'); # hrSystemProcesses
+		return unless defined($procs) && $procs =~ /^[0-9]+$/;
+		return ('Processes' => $procs, 'Threads' => 0, 'MultiThreadProcs' => 0);
+	}
+
+	return if $opt{s};
 	return unless ($^O eq 'linux' && `/bin/uname -r 2>&1` =~ /^2\.6\./) ||
-					($^O eq 'solaris' && `/bin/uname -r 2>&1` =~ /^5\.9/);
+			($^O eq 'solaris' && `/bin/uname -r 2>&1` =~ /^5\.9/);
 	my %update = ();
 	my $cmd = '/bin/ps -eo pid,nlwp';
 
-	open(PH,'-|',$cmd) || die "Unable to open file handle for command '$cmd': $!";
+	open(PH,'-|',$cmd) || die "Unable to open file handle PH for command '$cmd': $!";
 	while (local $_ = <PH>) {
 		if (my ($pid,$nlwp) = $_ =~ /^\s*(\d+)\s+(\d+)\s*$/) {
 			$update{Processes}++;
@@ -288,7 +420,7 @@ sub proc_threads {
 			$update{MultiThreadProcs}++ if $nlwp > 1;
 		}
 	}
-	close(PH) || die "Unable to close file handle for command '$cmd': $!";
+	close(PH) || die "Unable to close file handle PH for command '$cmd': $!";
 
 	return %update;
 }
@@ -296,6 +428,7 @@ sub proc_threads {
 
 
 sub mail_exim_queue {
+	return if $opt{s};
 	my $spooldir = '/var/spool/exim/input';
 	return unless -d $spooldir && -x $spooldir && -r $spooldir;
 
@@ -313,6 +446,7 @@ sub mail_exim_queue {
 
 
 sub mail_sendmail_queue {
+	return if $opt{s};
 	my $spooldir = '/var/spool/mqueue';
 	return unless -d $spooldir && -x $spooldir && -r $spooldir;
 
@@ -331,6 +465,7 @@ sub mail_sendmail_queue {
 
 
 sub mail_postfix_queue {
+	return if $opt{s};
 	my @spooldirs = qw(
 			/var/spool/postfix/incoming
 			/var/spool/postfix/active
@@ -356,6 +491,7 @@ sub mail_postfix_queue {
 
 # DO NOT ENABLE THIS ONE YET
 sub mail_queue {
+	return if $opt{s};
 	my $cmd = select_cmd(qw(/usr/bin/mailq /usr/sbin/mailq /usr/local/bin/mailq
 			/usr/local/sbin/mailq /bin/mailq /sbin/mailq
 			/usr/local/exim/bin/mailq /home/system/exim/bin/mailq));
@@ -379,18 +515,69 @@ sub mail_queue {
 
 
 sub db_mysql_activity {
+	return if $opt{s};
 	my %update = ();
 	return %update unless (defined DB_MYSQL_DSN && defined DB_MYSQL_USER);
+	my @cols = qw(Com_select Com_insert Com_delete Com_replace Com_update Questions);
+
+#	my @GAUGE = qw(Key_blocks_not_flushed Key_blocks_unused Key_blocks_used
+#		Open_files Open_streams Open_tables Qcache_free_blocks Qcache_free_memory
+#		Qcache_queries_in_cache Qcache_total_blocks Slave_open_temp_tables
+#		Threads_cached Threads_connected Threads_running Uptime);
+
+#	my @DERIVE = qw(Aborted_clients Aborted_connects Binlog_cache_disk_use
+#		Binlog_cache_use Bytes_received Bytes_sent Com_admin_commands Com_alter_db
+#		Com_alter_table Com_analyze Com_backup_table Com_begin Com_change_db
+#		Com_change_master Com_check Com_checksum Com_commit Com_create_db
+#		Com_create_function Com_create_index Com_create_table Com_dealloc_sql
+#		Com_delete Com_delete_multi Com_do Com_drop_db Com_drop_function
+#		Com_drop_index Com_drop_table Com_drop_user Com_execute_sql Com_flush
+#		Com_grant Com_ha_close Com_ha_open Com_ha_read Com_help Com_insert
+#		Com_insert_select Com_kill Com_load Com_load_master_data Com_load_master_table
+#		Com_lock_tables Com_optimize Com_preload_keys Com_prepare_sql Com_purge
+#		Com_purge_before_date Com_rename_table Com_repair Com_replace Com_replace_select
+#		Com_reset Com_restore_table Com_revoke Com_revoke_all Com_rollback
+#		Com_savepoint Com_select Com_set_option Com_show_binlog_events
+#		Com_show_binlogs Com_show_charsets Com_show_collations Com_show_column_types
+#		Com_show_create_db Com_show_create_table Com_show_databases
+#		Com_show_errors Com_show_fields Com_show_grants Com_show_innodb_status
+#		Com_show_keys Com_show_logs Com_show_master_status Com_show_ndb_status
+#		Com_show_new_master Com_show_open_tables Com_show_privileges Com_show_processlist
+#		Com_show_slave_hosts Com_show_slave_status Com_show_status Com_show_storage_engines
+#		Com_show_tables Com_show_variables Com_show_warnings Com_slave_start
+#		Com_slave_stop Com_stmt_close Com_stmt_execute Com_stmt_prepare Com_stmt_reset
+#		Com_stmt_send_long_data Com_truncate Com_unlock_tables Com_update
+#		Com_update_multi Connections Created_tmp_disk_tables Created_tmp_files
+#		Created_tmp_tables Delayed_errors Delayed_insert_threads Delayed_writes
+#		Flush_commands Handler_commit Handler_delete Handler_discover Handler_read_first
+#		Handler_read_key Handler_read_next Handler_read_prev Handler_read_rnd
+#		Handler_read_rnd_next Handler_rollback Handler_update Handler_write
+#		Key_blocks_not_flushed Key_blocks_unused Key_blocks_used Key_read_requests
+#		Key_reads Key_write_requests Key_writes Max_used_connections Not_flushed_delayed_rows
+#		Open_files Open_streams Open_tables Opened_tables Qcache_free_blocks
+#		Qcache_free_memory Qcache_hits Qcache_inserts Qcache_lowmem_prunes Qcache_not_cached
+#		Qcache_queries_in_cache Qcache_total_blocks Questions Select_full_join
+#		Select_full_range_join Select_range Select_range_check Select_scan Slave_open_temp_tables
+#		Slave_retried_transactions Slow_launch_threads Slow_queries Sort_merge_passes
+#		Sort_range Sort_rows Sort_scan Ssl_accept_renegotiates Ssl_accepts
+#		Ssl_callback_cache_hits Ssl_client_connects Ssl_connect_renegotiates Ssl_ctx_verify_depth
+#		Ssl_ctx_verify_mode Ssl_default_timeout Ssl_finished_accepts Ssl_finished_connects
+#		Ssl_session_cache_hits Ssl_session_cache_misses Ssl_session_cache_overflows
+#		Ssl_session_cache_size Ssl_session_cache_timeouts Ssl_sessions_reused
+#		Ssl_used_session_cache_entries Ssl_verify_depth Ssl_verify_mode
+#		Table_locks_immediate Table_locks_waited Threads_cached Threads_connected
+#		Threads_created Threads_running);
 
 	eval {
 		require DBI;
 		my $dbh = DBI->connect(DB_MYSQL_DSN,DB_MYSQL_USER,DB_MYSQL_PASS);
-		my $sth = $dbh->prepare('SHOW STATUS');
+		my $sth = $dbh->prepare('SHOW GLOBAL STATUS');
 		$sth->execute();
 		while (my @ary = $sth->fetchrow_array()) {
-			if ($ary[0] =~ /^Questions$/i) {
-				%update = @ary;
-				last;
+			if (grep { $ary[0] eq $_ && /^Com_/ } @cols) {
+				$update{"com.$ary[0]"} = $ary[1];
+			} elsif (grep { $ary[0] eq $_ } @cols) {
+				$update{$ary[0]} = $ary[1];
 			}
 		}
 		$sth->finish();
@@ -403,6 +590,7 @@ sub db_mysql_activity {
 
 
 sub db_mysql_replication {
+	return if $opt{s};
 	my %update = ();
 	return %update unless (defined DB_MYSQL_DSN && defined DB_MYSQL_USER);
 
@@ -423,6 +611,13 @@ sub db_mysql_replication {
 
 
 sub misc_users {
+	if ($opt{s}) {
+		my $users = _snmp('.1.3.6.1.2.1.25.1.5.0'); # hrSystemNumUsers
+		return unless defined($users) && $users =~ /^[0-9]+$/;
+		return ('Users' => $users, 'Unique' => 0);
+	}
+
+	return if $opt{s};
 	my $cmd = select_cmd(qw(/usr/bin/who /bin/who /usr/bin/w /bin/w));
 	return unless -f $cmd;
 	my %update = ();
@@ -453,6 +648,12 @@ sub misc_users {
 
 
 sub misc_uptime {
+	if ($opt{s}) {
+		my $ticks = _snmp('.1.3.6.1.2.1.25.1.1.0'); # hrSystemUptime
+		return unless defined($ticks) && $ticks =~ /^[0-9]+$/;
+		return ('DaysUp' => $ticks/100/60/60/24);
+	}
+
 	my $cmd = select_cmd(qw(/usr/bin/uptime /bin/uptime));
 	return unless -f $cmd;
 	my %update = ();
@@ -484,16 +685,20 @@ sub misc_uptime {
 
 
 sub cpu_temp {
+	return if $opt{s};
 	my $cmd = '/usr/bin/sensors';
 	return unless -f $cmd;
 	my %update = ();
 
-	open(PH,'-|',$cmd) || die "Unable to open file handle PH for command '$cmd': $!\n";
+	open(PH,'-|',"$cmd 2>&1") || die "Unable to open file handle PH for command '$cmd': $!\n";
 	while (local $_ = <PH>) {
 		if (my ($k,$v) = $_ =~ /^([^:]*\b(?:CPU|temp)\d*\b.*?):\s*\S*?([\d\.]+)\S*\s*/i) {
 			$k =~ s/\W//g; $k =~ s/Temp$//i;
 			$update{$k} = $v;
-		}
+                } elsif (/(no sensors found|kernel driver|sensors-detect|error|warning)/i
+				&& !$opt{q}) {
+                        warn "Warning [cpu_temp]: $_";
+                }
 	}
 	close(PH) || die "Unable to close file handle PH for command '$cmd': $!\n";
 
@@ -503,6 +708,7 @@ sub cpu_temp {
 
 
 sub apache_logs {
+	return if $opt{s};
 	my $dir = '/var/log/httpd';
 	return unless -d $dir;
 	my %update = ();
@@ -526,6 +732,7 @@ sub apache_logs {
 
 
 sub apache_status {
+	return if $opt{s};
 	my @data = ();
 	my %update = ();
 
@@ -547,8 +754,8 @@ sub apache_status {
 			my $response = $ua->get($url);
 			if ($response->is_success) {
 				@data = split(/\n+|\r+/,$response->content);
-			} else {
-				warn "apache_status: failed to get $url; ". $response->status_line ."\n";
+			} elsif (!$opt{q}) {
+				warn "Warning [apache_status]: failed to get $url; ". $response->status_line ."\n";
 			}
 		};
 	}
@@ -600,13 +807,41 @@ sub _darwin_cpu_utilisation {
 
 
 sub cpu_utilisation {
+	my %update = ();
+	if ($opt{s}) {
+		$update{'User'}    = _snmp('.1.3.6.1.4.1.2021.11.9.0');
+		$update{'System'}  = _snmp('.1.3.6.1.4.1.2021.11.10.0');
+		$update{'Idle'}    = _snmp('.1.3.6.1.4.1.2021.11.11.0');
+		#$update{'IO_Wait'} = 100 - $update{'User'} - $update{'System'} - $update{'Idle'};
+		$update{'IO_Wait'} = 0;
+
+		# Try querying the Windows thingie instead
+		unless (grep(/^[0-9\.]{1,3}$/, values(%update)) == 4) {
+			# hrProcessorLoad
+			# .1.3.6.1.2.1.25.3.3.1.2.1 - CPU 1
+			# .1.3.6.1.2.1.25.3.3.1.2.2 - CPU 2 ...
+			my $total; my $cpu;
+			for ($cpu = 1; $cpu <= 16; $cpu++) {
+				my $load = _snmp(".1.3.6.1.2.1.25.3.3.1.2.$cpu");
+				if (defined($load) && !ref($load) && $load =~ /^[0-9\.]{1,3}$/) {
+					$total += $load;
+				} else {
+					last;
+				}
+			}
+			return unless $total && $cpu-1;
+			%update = ('User' => int($total / $cpu-1), 'System' => 0, 'Idle' => 0, 'IO_Wait' => 0);
+		}
+		return %update;
+	}
+
 	if ($^O eq 'darwin') {
 		return _darwin_cpu_utilisation();
 	}
 
 	my $cmd = '/usr/bin/vmstat';
 	return unless -f $cmd;
-	my %update = _parse_vmstat("$cmd 1 2");
+	%update = _parse_vmstat("$cmd 1 2");
 	my %labels = (wa => 'IO_Wait', id => 'Idle', sy => 'System', us => 'User');
 
 	$update{$_} ||= 0 for keys %labels;
@@ -615,7 +850,46 @@ sub cpu_utilisation {
 
 
 
+sub hw_irq_interrupts {
+	return if $opt{s};
+
+	my @update;
+	if (open(FH,'<','/proc/interrupts')) {
+		local $_ = <FH>;
+		return unless /^\s+(CPU[0-9]+.*)/;
+		my @cpus = split(/\s+/,$1);
+		$_ = lc($_) for @cpus;
+
+		my %data;
+		while (local $_ = <FH>) {
+			if (/^\s*([0-9]{1,2}):\s+([\s0-9]+)\s+(\S+)\s+(.+?)\s*$/) {
+				my ($irq,$ints,$path,$src) = ($1,$2,$3,$4);
+				my @ints = split(/\s+/,$ints);
+				for (my $i = 0; $i <= @cpus; $i++) {
+					my $cpu = $cpus[$i];
+					my $int = $ints[$i];
+					next unless defined $cpu && defined $int;
+					$data{$cpu}->{"$cpu.irq$irq"} = $int;
+				}
+			}
+		}
+
+		for my $cpu (keys %data) {
+			if (grep(/[1-9]/,values %{$data{$cpu}})) {
+				push @update, %{$data{$cpu}};
+			}
+		}
+
+		close(FH) || warn "Unable to close file handle FH for file '/proc/interrupts': $!";
+	}
+
+	return @update;
+}
+
+
+
 sub cpu_interrupts {
+	return if $opt{s};
 	my $cmd = '/usr/bin/vmstat';
 	return unless -f $cmd;
 
@@ -630,6 +904,7 @@ sub cpu_interrupts {
 
 
 sub mem_swap_activity {
+	return if $opt{s};
 	my $cmd = '/usr/bin/vmstat';
 	return unless -f $cmd;
 
@@ -693,6 +968,7 @@ sub _parse_ipmitool_sensor {
 
 
 sub misc_ipmi_temp {
+	return if $opt{s};
 	my $cmd = select_cmd(qw(/usr/bin/ipmitool));
 	return unless -f $cmd;
 
@@ -710,6 +986,7 @@ sub misc_ipmi_temp {
 
 
 sub hdd_io {
+	return if $opt{s};
 	my $cmd = select_cmd(qw(/usr/bin/iostat /usr/sbin/iostat));
 	return unless -f $cmd;
 	return unless $^O eq 'linux';
@@ -732,6 +1009,7 @@ sub hdd_io {
 
 
 sub mem_usage {
+	return if $opt{s};
 	my %update = ();
 	my $cmd = select_cmd(qw(/usr/bin/free /bin/free));
 	my @keys = ();
@@ -779,6 +1057,7 @@ sub mem_usage {
 
 
 sub hdd_temp {
+	return if $opt{s};
 	my $cmd = select_cmd(qw(/usr/sbin/hddtemp /usr/bin/hddtemp));
 	return unless -f $cmd;
 
@@ -789,7 +1068,7 @@ sub hdd_temp {
 		}
 	}
 
-	$cmd .= "  -q @devs";
+	$cmd .= " -q @devs 2>&1";
 	my %update = ();
 	return %update unless @devs;
 
@@ -797,6 +1076,8 @@ sub hdd_temp {
 	while (local $_ = <PH>) {
 		if (my ($dev,$temp) = $_ =~ m,^/dev/([a-z]+):\s+.+?:\s+(\d+)..?C,) {
 			$update{$dev} = $temp;
+		} elsif (!/^\s*$/ && !$opt{q}) {
+			warn "Warning [hdd_temp]: $_";
 		}
 	}
 	close(PH) || die "Unable to close file handle PH for command '$cmd': $!\n";
@@ -807,6 +1088,44 @@ sub hdd_temp {
 
 
 sub hdd_capacity {
+	if ($opt{s}) {
+		return;
+
+		my $snmp = _snmp('.1.3.6.1.4.1.2021.9.1'); # dskTable
+		return unless defined($snmp) && ref($snmp) eq 'HASH';
+
+		my %disks;
+#.1.3.6.1.4.1.2021.9.1.1.1 = INTEGER: 1
+#.1.3.6.1.4.1.2021.9.1.2.1 = STRING: /
+#.1.3.6.1.4.1.2021.9.1.3.1 = STRING: /dev/sda1
+#.1.3.6.1.4.1.2021.9.1.4.1 = INTEGER: 100000
+#.1.3.6.1.4.1.2021.9.1.5.1 = INTEGER: -1
+#.1.3.6.1.4.1.2021.9.1.6.1 = INTEGER: 7850996
+#.1.3.6.1.4.1.2021.9.1.7.1 = INTEGER: 3153808
+#.1.3.6.1.4.1.2021.9.1.8.1 = INTEGER: 4298376
+#.1.3.6.1.4.1.2021.9.1.9.1 = INTEGER: 58
+#.1.3.6.1.4.1.2021.9.1.10.1 = INTEGER: 16
+#.1.3.6.1.4.1.2021.9.1.100.1 = INTEGER: 0
+#.1.3.6.1.4.1.2021.9.1.101.1 = STRING: 
+
+#'UCD-SNMP-MIB::dskMinimum.1' => '100000',
+#'UCD-SNMP-MIB::dskErrorMsg.1' => '',
+#'UCD-SNMP-MIB::dskIndex.1' => '1',
+#'UCD-SNMP-MIB::dskPath.1' => '/',
+#'UCD-SNMP-MIB::dskPercentNode.1' => '16',
+#'UCD-SNMP-MIB::dskErrorFlag.1' => '0',
+#'UCD-SNMP-MIB::dskAvail.1' => '3153784',
+#'#UCD-SNMP-MIB::dskPercent.1' => '58',
+#'UCD-SNMP-MIB::dskMinPercent.1' => '-1',
+#'UCD-SNMP-MIB::dskDevice.1' => '/dev/sda1',
+#'UCD-SNMP-MIB::dskUsed.1' => '4298400',
+#'UCD-SNMP-MIB::dskTotal.1' => '7850996'
+
+#use Data::Dumper;
+#warn Dumper($snmp);
+		return;
+	}
+
 	my $cmd = select_cmd(qw(/bin/df /usr/bin/df));
 	return unless -f $cmd;
 
@@ -837,6 +1156,10 @@ sub hdd_capacity {
 			next if ($data{fs} eq 'none' || $data{mount} =~ m#^/dev/#);
 			$data{capacity} =~ s/\%//;
 			(my $ds = $data{mount}) =~ s/[^a-z0-9]/_/ig; $ds =~ s/__+/_/g;
+
+                        # McAfee SCM 4.2 bodge-o-rama fix work around
+                        next if $ds =~ /^_var_jails_d_spam_/;
+
 			$update{"${variant}$ds"} = $data{capacity};
 		}
 	}
@@ -846,7 +1169,23 @@ sub hdd_capacity {
 
 
 
+sub misc_entropy {
+	return if $opt{s};
+	my $file = '/proc/sys/kernel/random/entropy_avail';
+	return unless -f $file;
+	my %update = ();
+
+	open(FH,'<',$file) || die "Unable to open '$file': $!\n";
+	chomp($update{entropy_avail} = <FH>);
+	close(FH) || die "Unable to close '$file': $!\n";
+
+	return %update;
+}
+
+
+
 sub net_traffic {
+	return if $opt{s};
 	return unless -f '/proc/net/dev';
 	my @keys = ();
 	my %update = ();
@@ -877,6 +1216,7 @@ sub net_traffic {
 
 
 sub proc_state {
+	return if $opt{s};
 	my $cmd = select_cmd(qw(/bin/ps /usr/bin/ps));
 	my %update = ();
 	my %keys = ();
@@ -902,7 +1242,7 @@ sub proc_state {
 				$update{$keys{$state}||$state}++ if $state;
 			}
 		}
-		close(PH) || die "Unable to close file handle for command '$cmd': $!\n";
+		close(PH) || die "Unable to close file handle PH for command '$cmd': $!\n";
 		$update{$_} ||= 0 for values %keys;
 
 	} else {
@@ -921,12 +1261,18 @@ sub proc_state {
 
 sub cpu_loadavg {
 	my %update = ();
-	my @data = ();
+	if ($opt{s}) {
+		$update{'1min'} = _snmp('.1.3.6.1.4.1.2021.10.1.3.1');
+		$update{'5min'} = _snmp('.1.3.6.1.4.1.2021.10.1.3.2');
+		$update{'15min'} = _snmp('.1.3.6.1.4.1.2021.10.1.3.3');
+		return %update;
+	}
 
+	my @data = ();
 	if (-f '/proc/loadavg') {
-		open(FH,'<','/proc/loadavg') || die "Unable to open '/proc/loadavg': $!\n";
+		open(FH,'<','/proc/loadavg') || die "Unable to open file handle FH for file '/proc/loadavg': $!\n";
 		my $str = <FH>;
-		close(FH) || die "Unable to close '/proc/loadavg': $!\n";
+		close(FH) || die "Unable to close file handle FH for file '/proc/loadavg': $!\n";
 		@data = split(/\s+/,$str);
 
 	} else {
@@ -971,9 +1317,10 @@ sub _parse_netstat {
 
 
 sub net_connections_ports {
+	return if $opt{s};
 	my $cmd = select_cmd(qw(/bin/netstat /usr/bin/netstat /usr/sbin/netstat));
 	return unless -f $cmd;
-	$cmd .= ' -na';
+	$cmd .= ' -na 2>&1';
 
 	my %update = ();
 	my %listening_ports;
@@ -994,9 +1341,10 @@ sub net_connections_ports {
 
 
 sub net_connections {
+	return if $opt{s};
 	my $cmd = select_cmd(qw(/bin/netstat /usr/bin/netstat /usr/sbin/netstat));
 	return unless -f $cmd;
-	$cmd .= ' -na';
+	$cmd .= ' -na 2>&1';
 
 	my %update = ();
 	for (@{_parse_netstat($cmd)}) {
@@ -1009,12 +1357,13 @@ sub net_connections {
 
 
 sub proc_filehandles {
+	return if $opt{s};
 	return unless -f '/proc/sys/fs/file-nr';
 	my %update = ();
 
-	open(FH,'<','/proc/sys/fs/file-nr') || die "Unable to open '/proc/sys/fs/file-nr': $!\n";
+	open(FH,'<','/proc/sys/fs/file-nr') || die "Unable to open file handle FH for file '/proc/sys/fs/file-nr': $!\n";
 	my $str = <FH>;
-	close(FH) || die "Unable to close '/proc/sys/fs/file-nr': $!\n";
+	close(FH) || die "Unable to close file handle FH for file '/proc/sys/fs/file-nr': $!\n";
 	@update{qw(Allocated Free Maximum)} = split(/\s+/,$str);
 	$update{Used} = $update{Allocated} - $update{Free};
 

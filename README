@@ -4,27 +4,27 @@ NAME
 SYNOPSIS
      use strict;
      use RRD::Simple ();
-     
- # Create an interface object
+ 
+     # Create an interface object
      my $rrd = RRD::Simple->new( file => "myfile.rrd" );
-     
- # Create a new RRD file with 3 data sources called
+ 
+     # Create a new RRD file with 3 data sources called
      # bytesIn, bytesOut and faultsPerSec.
      $rrd->create(
                  bytesIn => "GAUGE",
                  bytesOut => "GAUGE",
                  faultsPerSec => "COUNTER"
              );
-     
- # Put some arbitary data values in the RRD file for same
+ 
+     # Put some arbitary data values in the RRD file for the same
      # 3 data sources called bytesIn, bytesOut and faultsPerSec.
      $rrd->update(
                  bytesIn => 10039,
                  bytesOut => 389,
                  faultsPerSec => 0.4
              );
-     
- # Generate graphs:
+ 
+     # Generate graphs:
      # /var/tmp/myfile-daily.png, /var/tmp/myfile-weekly.png
      # /var/tmp/myfile-monthly.png, /var/tmp/myfile-annual.png
      my %rtn = $rrd->graph(
@@ -44,14 +44,14 @@ SYNOPSIS
      my $lastUpdated = $rrd->last;
      print "myfile.rrd was last updated at " .
            scalar(localtime($lastUpdated)) . "\n";
-     
- # Get list of data source names from an RRD file
+ 
+     # Get list of data source names from an RRD file
      my @dsnames = $rrd->sources;
      print "Available data sources: " . join(", ", @dsnames) . "\n";
-     
- # And for the ultimately lazy, you could create and update
+ 
+     # And for the ultimately lazy, you could create and update
      # an RRD in one go using a one-liner like this:
-     perl -MRRD::Simple=:all -e"update(@ARGV)" myfile.rrd bytesIn 99999
+     perl -MRRD::Simple=:all -e"update(@ARGV)" myfile.rrd bytesIn 99999 
 
 DESCRIPTION
     RRD::Simple provides a simple interface to RRDTool's RRDs module. This
@@ -71,8 +71,10 @@ METHODS
      my $rrd = RRD::Simple->new(
              file => "myfile.rrd",
              rrdtool => "/usr/local/rrdtool-1.2.11/bin/rrdtool",
+             tmpdir => "/var/tmp",
              cf => [ qw(AVERAGE MAX) ],
              default_dstype => "GAUGE",
+             on_missing_ds => "add",
          );
 
     The "file" parameter is currently optional but will become mandatory in
@@ -84,6 +86,13 @@ METHODS
     "rrdtool" binary can be found. If not specified, the module will search
     for the "rrdtool" binary in your path, an additional location relative
     to where the "RRDs" module was loaded from, and in /usr/local/rrdtool*.
+
+    The "tmpdir" parameter is option and is only used what automatically
+    adding a new data source to an existing RRD file. By default any
+    temporary files will be placed in your default system temp directory
+    (typically /tmp on Linux, or whatever your TMPDIR environment variable
+    is set to). This parameter can be used for force any temporary files to
+    be created in a specific directory.
 
     The "rrdtool" binary is only used by the "add_source" method, and only
     under certain circumstances. The "add_source" method may also be called
@@ -101,6 +110,11 @@ METHODS
     localised to the $rrd object instance rather than be global to the
     RRD::Simple package. See $RRD::Simple::DEFAULT_DSTYPE.
 
+    The "on_missing_ds" parameter is optional and will default to "add" when
+    not defined. This parameter will determine what will happen if you try
+    to insert or update data for a data source name that does not exist in
+    the RRD file. Valid values are "add", "ignore" and "die".
+
   create
      $rrd->create($rrdfile, $period,
              source_name => "TYPE",
@@ -114,11 +128,12 @@ METHODS
     specified by the "new" constructor method, or "$0.rrd". (Script basename
     with the file extension of .rrd).
 
-    $period is optional and will default to "year". Valid options are "day",
-    "week", "month", "year", "3years" and "mrtg". Specifying a data
-    retention period value will change how long data will be retained for
-    within the RRD file. The "mrtg" scheme will try and mimic the data
-    retention period used by MRTG v2.13.2
+    $period is optional and will default to "year". Valid options are
+    "hour", "6hour"/"quarterday", "12hour"/"halfday", "day", "week",
+    "month", "year", "3years" and "mrtg". Specifying a data retention period
+    value will change how long data will be retained for within the RRD
+    file. The "mrtg" scheme will try and mimic the data retention period
+    used by MRTG v2.13.2
     (<http://people.ee.ethz.ch/~oetiker/webtools/mrtg/>.
 
     The "mrtg" data retention period uses a data stepping resolution of 300
@@ -221,9 +236,10 @@ METHODS
              destination => "/path/to/write/graph/images",
              basename => "graph_basename",
              timestamp => "both", # graph, rrd, both or none
+             periods => [ qw(week month) ], # omit to generate all graphs
              sources => [ qw(source_name1 source_name2 source_name3) ],
              source_colors => [ qw(ff0000 aa3333 000000) ],
-             source_labels => [ ("My Source 1","My Source Two","Source 3") ],
+             source_labels => [ ("My Source 1", "My Source Two", "Source 3") ],
              source_drawtypes => [ qw(LINE1 AREA LINE) ],
              line_thickness => 2,
              extended_legend => 1,
@@ -236,14 +252,15 @@ METHODS
     the RRD file.
 
     The number of image files that are created depends on the retention
-    period of the RRD file. Daily, weekly, monthly, annual and 3year graphs
-    will be created if there is enough data in the RRD file to accomodate
-    them.
+    period of the RRD file. Hourly, 6 hourly, 12 hourly, daily, weekly,
+    monthly, annual and 3year graphs will be created if there is enough data
+    in the RRD file to accomodate them.
 
     The image filenames will start with either the basename of the RRD file,
     or whatever is specified by the "basename" parameter. The second part of
-    the filename will be "-daily", "-weekly", "-monthly", "-annual" or
-    "-3year" depending on the period that is being graphed.
+    the filename will be "-hourly", "-6hourly", "-12hourly", "-daily",
+    "-weekly", "-monthly", "-annual" or "-3year" depending on the period
+    that is being graphed.
 
     $rrdfile is optional and will default to using the RRD filename
     specified by the "new" constructor method, or "$0.rrd". (Script basename
@@ -262,7 +279,7 @@ METHODS
     basename
         The "basename" parameter is optional. This parameter specifies the
         basename of the graph image files that will be created. If not
-        specified, it will default to the name of the RRD file. For exmaple,
+        specified, it will default to the name of the RRD file. For example,
         if you specify a basename name of "mygraph", the following graph
         image files will be created in the "destination" directory:
 
@@ -289,6 +306,12 @@ METHODS
         the graph and RRD file were last updated will be used, "none" - no
         timestamp will be used.
 
+    periods
+        The "periods" parameter is an optional list of periods that graphs
+        should be generated for. If omitted, all possible graphs will be
+        generated and not restricted to any specific subset. See the create
+        method for a list of valid time periods.
+
     sources
         The "sources" parameter is optional. This parameter should be an
         array of data source names that you want to be plotted. All data
@@ -298,8 +321,8 @@ METHODS
          my %rtn = $rrd->graph($rrdfile,
                  source_colors => [ qw(ff3333 ff00ff ffcc99) ],
              );
-         
- %rtn = $rrd->graph($rrdfile,
+ 
+         %rtn = $rrd->graph($rrdfile,
                  source_colors => { source_name1 => "ff3333",
                                     source_name2 => "ff00ff",
                                     source_name3 => "ffcc99", },
@@ -315,8 +338,8 @@ METHODS
                  sources => [ qw(source_name1 source_name2 source_name3) ],
                  source_labels => [ ("My Source 1","My Source Two","Source 3") ],
              );
-         
- %rtn = $rrd->graph($rrdfile,
+ 
+         %rtn = $rrd->graph($rrdfile,
                  source_labels => { source_name1 => "My Source 1",
                                     source_name2 => "My Source Two",
                                     source_name3 => "Source 3", },
@@ -336,14 +359,14 @@ METHODS
          my %rtn = $rrd->graph($rrdfile,
                  source_drawtypes => [ qw(LINE1 AREA LINE) ],
              );
-         
- %rtn = $rrd->graph($rrdfile,
+ 
+         %rtn = $rrd->graph($rrdfile,
                  source_colors => { source_name1 => "LINE1",
                                     source_name2 => "AREA",
                                     source_name3 => "LINE", },
              );
-         
- %rtn = $rrd->graph($rrdfile,
+ 
+         %rtn = $rrd->graph($rrdfile,
                  sources => [ qw(system user iowait idle) ]
                  source_colors => [ qw(AREA STACK STACK STACK) ],
              );
@@ -357,7 +380,7 @@ METHODS
 
     line_thickness
         Specifies the thickness of the data lines drawn on the graphs for
-        any data sources that have not had a specific line thinkness already
+        any data sources that have not had a specific line thickness already
         specified using the "source_drawtypes" option. Valid values are 1, 2
         and 3 (pixels).
 
@@ -458,12 +481,13 @@ EXPORTS
     See the examples and unit tests in this distribution for more details.
 
 SEE ALSO
-    RRDTool::OO, RRDs, <http://www.rrdtool.org>, examples/*.pl,
-    <http://search.cpan.org/src/NICOLAW/RRD-Simple-1.43/examples/>,
+    RRD::Simple::Examples, RRDTool::OO, RRDs, <http://www.rrdtool.org>,
+    examples/*.pl,
+    <http://search.cpan.org/src/NICOLAW/RRD-Simple-1.44/examples/>,
     <http://rrd.me.uk>
 
 VERSION
-    $Id: Simple.pm 988 2007-03-04 23:51:22Z nicolaw $
+    $Id: Simple.pm 1100 2008-01-24 17:39:35Z nicolaw $
 
 AUTHOR
     Nicola Worthington <nicolaw@cpan.org>
@@ -475,7 +499,7 @@ AUTHOR
     http://www.amazon.co.uk/gp/registry/1VZXC59ESWYK0?sort=priority )
 
 COPYRIGHT
-    Copyright 2005,2006,2007 Nicola Worthington.
+    Copyright 2005,2006,2007,2008 Nicola Worthington.
 
     This software is licensed under The Apache Software License, Version
     2.0.
