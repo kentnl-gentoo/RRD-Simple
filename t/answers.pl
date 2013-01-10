@@ -41,7 +41,66 @@
 
 @schemes = keys %retention_periods;
 
-# Default values for 1.33 and higher
+# Default values for 1.40 and higher
+$rra = [
+       {
+	       'xff'	     => '0.5',
+	       'pdp_per_row' => 1,
+	       'cdp_prep'    => undef,
+	       'cf'	     => 'AVERAGE',
+	       'rows'	     => 800
+       },
+       {
+	       'xff'	     => '0.5',
+	       'pdp_per_row' => 6,
+	       'cdp_prep'    => 0,
+	       'cf'	     => 'AVERAGE',
+	       'rows'	     => 800
+       },
+       {
+	       'xff'	     => '0.5',
+	       'pdp_per_row' => 24,
+	       'cdp_prep'    => 0,
+	       'cf'	     => 'AVERAGE',
+	       'rows'	     => 800
+       },
+       {
+	       'xff'	     => '0.5',
+	       'pdp_per_row' => 288,
+	       'cdp_prep'    => 0,
+	       'cf'	     => 'AVERAGE',
+	       'rows'	     => 800
+       },
+       {
+	       'xff'	     => '0.5',
+	       'pdp_per_row' => 1,
+	       'cdp_prep'    => undef,
+	       'cf'	     => 'MAX',
+	       'rows'	     => 800
+       },
+       {
+	       'xff'	     => '0.5',
+	       'pdp_per_row' => 6,
+	       'cdp_prep'    => -inf,
+	       'cf'	     => 'MAX',
+	       'rows'	     => 800
+       },
+       {
+	       'xff'	     => '0.5',
+	       'pdp_per_row' => 24,
+	       'cdp_prep'    => -inf,
+	       'cf'	     => 'MAX',
+	       'rows'	     => 800
+       },
+       {
+	       'xff'	     => '0.5',
+	       'pdp_per_row' => 288,
+	       'cdp_prep'    => -inf,
+	       'cf'	     => 'MAX',
+	       'rows'	     => 800
+       }];
+
+# Default values for 1.33 through 1.40
 $rra = [
 	{
 		'xff'         => '0.5',
@@ -98,7 +157,7 @@ $rra = [
 		'cdp_prep'    => undef,
 		'cf'          => 'MAX',
 		'rows'        => 800
-	}];
+	}] if $RRD::Simple::VERSION < 1.33;
 
 # Old default values for 1.32
 $rra = [

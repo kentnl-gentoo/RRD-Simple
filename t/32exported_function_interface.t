@@ -55,6 +55,12 @@ SKIP: {
 	}
 
 	my $info = info($rrdfile);
+
+	# The cur_row values appear to be random, so strip them out.
+	for my $source (@{ $info->{rra} }) {
+		delete $source->{cur_row};
+	}
+
 	cmp_deeply(
 			$info->{rra},
 			$rra,
