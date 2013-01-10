@@ -26,16 +26,16 @@
 			'bytesOut min 50.00', 'bytesOut max 50.00', 'bytesOut last 50.00'
 		)],
 	'monthly' => [(
-			'bytesIn min nan', 'bytesIn max nan', 'bytesIn last nan',
-			'bytesOut min nan', 'bytesOut max nan', 'bytesOut last nan'
+			'bytesIn min -nan', 'bytesIn max -nan', 'bytesIn last -nan',
+			'bytesOut min -nan', 'bytesOut max -nan', 'bytesOut last -nan'
 		)],
 	'annual' => [(
-			'bytesIn min nan', 'bytesIn max nan', 'bytesIn last nan',
-			'bytesOut min nan', 'bytesOut max nan', 'bytesOut last nan'
+			'bytesIn min -nan', 'bytesIn max -nan', 'bytesIn last -nan',
+			'bytesOut min -nan', 'bytesOut max -nan', 'bytesOut last -nan'
 		)],
 	'3years' => [(
-			'bytesIn min nan', 'bytesIn max nan', 'bytesIn last nan',
-			'bytesOut min nan', 'bytesOut max nan', 'bytesOut last nan'
+			'bytesIn min -nan', 'bytesIn max -nan', 'bytesIn last -nan',
+			'bytesOut min -nan', 'bytesOut max -nan', 'bytesOut last -nan'
 		)],
 	);
 
