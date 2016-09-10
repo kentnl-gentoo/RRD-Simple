@@ -17,7 +17,7 @@ use lib qw(./lib ../lib);
 use RRD::Simple 1.35 qw(:all);
 
 use vars qw($rra %retention_periods %scheme_graphs @schemes %graph_return);
-require 'answers.pl';
+require './answers.pl';
 
 ok(create($rrdfile,
 		bytesIn => 'GAUGE',
