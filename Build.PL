@@ -69,8 +69,7 @@ $build->create_build_script;
 # permission to do so by a human being - default to not send for automated
 # testing environments, of if the user does not respond within 20 seconds.
 
-my $url = $ENV{AUTOMATED_TESTING} ? undef : may_send_version_information();
-if ($url) {
+if (undef) {
 	my @resp = ();
 	eval {
 		local $SIG{ALRM} = sub { die; };
@@ -81,7 +80,7 @@ if ($url) {
 				max_size => 500,
 			);
 		$ua->env_proxy;
-		my $response = $ua->get($url);
+		my $response = $ua->get(undef);
 		if ($response->is_success()) {
 			for (split(/\s*\n+\s*/, $response->content())) {
 				push @resp, $_ if $_;
