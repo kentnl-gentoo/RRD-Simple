@@ -77,8 +77,6 @@ MANIFEST			This list of files
 META.yml
 NOTICE
 README
-t/10pod.t
-t/11pod_coverage.t
 t/20compile.t
 t/21synopsis.t
 t/21synopsis_old.t
