@@ -81,21 +81,21 @@ $rra = [
        {
 	       'xff'	     => '0.5',
 	       'pdp_per_row' => 6,
-	       'cdp_prep'    => -inf,
+	       'cdp_prep'    => -Inf,
 	       'cf'	     => 'MAX',
 	       'rows'	     => 800
        },
        {
 	       'xff'	     => '0.5',
 	       'pdp_per_row' => 24,
-	       'cdp_prep'    => -inf,
+	       'cdp_prep'    => -Inf,
 	       'cf'	     => 'MAX',
 	       'rows'	     => 800
        },
        {
 	       'xff'	     => '0.5',
 	       'pdp_per_row' => 288,
-	       'cdp_prep'    => -inf,
+	       'cdp_prep'    => -Inf,
 	       'cf'	     => 'MAX',
 	       'rows'	     => 800
        }];
